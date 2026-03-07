@@ -4,8 +4,10 @@
  */
 
 import * as Notifications from 'expo-notifications';
-import { getItemsExpiringWithinDays } from '../../../db/repositories/items';
-import { getSettings } from '../../../db/repositories/settings';
+import { Q } from '@nozbe/watermelondb';
+import { database } from '../../../database';
+import type InventoryItem from '../../../database/models/InventoryItem';
+import { getExpiryDays } from '../../../shared/services/secureSettings';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -31,12 +33,24 @@ export async function scheduleExpiryNotifications(): Promise<void> {
     importance: Notifications.AndroidImportance.DEFAULT,
   });
 
-  const settings = await getSettings();
-  const items = await getItemsExpiringWithinDays(settings.expiryNotificationDays);
+  const days = await getExpiryDays();
+  const now = Date.now();
+  const cutoff = now + days * 24 * 60 * 60 * 1000;
+
+  const items = await database
+    .get<InventoryItem>('inventory_items')
+    .query(
+      Q.and(
+        Q.where('expiry_date', Q.gte(now)),
+        Q.where('expiry_date', Q.lte(cutoff))
+      )
+    )
+    .fetch();
 
   for (const item of items) {
-    if (!item.expiryDate) continue;
-    const triggerDate = new Date(item.expiryDate);
+    const expiry = item.expiryDate;
+    if (expiry == null) continue;
+    const triggerDate = new Date(expiry);
     triggerDate.setHours(8, 0, 0, 0);
     if (triggerDate.getTime() <= Date.now()) continue;
     const secondsFromNow = (triggerDate.getTime() - Date.now()) / 1000;
@@ -44,7 +58,7 @@ export async function scheduleExpiryNotifications(): Promise<void> {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'AEGIS: Item expiring',
-        body: `${item.name} expires on ${item.expiryDate}`,
+        body: `${item.name} expires on ${new Date(expiry).toISOString().slice(0, 10)}`,
         data: { itemId: item.id, kitId: item.kitId },
       },
       trigger: { seconds: secondsFromNow, channelId: 'expiry' },

@@ -1,5 +1,6 @@
 {
   "expo": {
+    "jsEngine": "jsc",
     "name": "AEGIS",
     "slug": "aegis-app",
     "version": "0.1.0",
@@ -7,7 +8,7 @@
     "icon": "./assets/icon.png",
     "scheme": "aegis",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -25,14 +26,15 @@
       "package": "app.aegis.survival"
     },
     "plugins": [
-      "expo-sqlite",
       [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
           "color": "#22c55e"
         }
-      ]
+      ],
+      "./plugins/withWatermelonDBSimdjson.js",
+      "./plugins/withoutPushForPersonalTeam.js"
     ]
   }
 }

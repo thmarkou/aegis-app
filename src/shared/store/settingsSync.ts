@@ -1,22 +1,23 @@
 /**
- * Syncs DB settings to the in-memory store on load, and persists store changes to DB.
+ * Syncs secure store settings to the in-memory store on load, and persists store changes.
+ * Uses expo-secure-store instead of SQLite.
  */
 
-import { getSettings, setSettings } from '../../db/repositories/settings';
+import { getTheme, setTheme, getShtfMode, setShtfMode } from '../services/secureSettings';
 import { useAppStore } from './useAppStore';
 
 export async function loadSettingsIntoStore(): Promise<void> {
-  const settings = await getSettings();
+  const [theme, shtfModeEnabled] = await Promise.all([getTheme(), getShtfMode()]);
   useAppStore.setState({
-    theme: settings.theme,
-    shtfModeEnabled: settings.shtfModeEnabled,
+    theme: theme as 'light' | 'dark' | 'shtf',
+    shtfModeEnabled,
   });
 }
 
 export async function persistTheme(theme: 'light' | 'dark' | 'shtf'): Promise<void> {
-  await setSettings({ theme });
+  await setTheme(theme);
 }
 
 export async function persistShtfMode(enabled: boolean): Promise<void> {
-  await setSettings({ shtfModeEnabled: enabled });
+  await setShtfMode(enabled);
 }

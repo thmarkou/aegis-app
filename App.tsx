@@ -1,13 +1,14 @@
+// NativeWind disabled - causes expo start to hang
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { initDb } from './src/db';
+import { database } from './src/database';
+import { useAppStore } from './src/shared/store/useAppStore';
+import { TabNavigator } from './src/shared/navigation/TabNavigator';
+import { LoginScreen } from './src/features/auth/screens/LoginScreen';
 import { loadSettingsIntoStore } from './src/shared/store/settingsSync';
 import { scheduleExpiryNotifications } from './src/features/inventory/services/expirationNotifications';
-import { useAppStore } from './src/shared/store/useAppStore';
-import { RootNavigator } from './src/shared/navigation/RootNavigator';
-import { LoginScreen } from './src/features/auth/screens/LoginScreen';
 
 function AppContent() {
   const authRole = useAppStore((s) => s.authRole);
@@ -16,8 +17,8 @@ function AppContent() {
 
   return (
     <NavigationContainer>
-      <StatusBar style="auto" />
-      <RootNavigator />
+      <StatusBar style="light" />
+      <TabNavigator />
     </NavigationContainer>
   );
 }
@@ -27,18 +28,21 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      await initDb();
-      if (cancelled) return;
-      await loadSettingsIntoStore();
-      if (cancelled) return;
-      await scheduleExpiryNotifications();
-      if (cancelled) return;
-      setReady(true);
-    })();
-    return () => {
-      cancelled = true;
+    const init = async () => {
+      try {
+        const adapter = database.adapter as { initializingPromise?: Promise<void> };
+        await (adapter.initializingPromise ?? Promise.resolve());
+        if (cancelled) return;
+        await loadSettingsIntoStore();
+        scheduleExpiryNotifications().catch((e) => console.warn('[AEGIS] Expiry notifications:', e));
+      } catch (err) {
+        console.error('[AEGIS] DB init failed:', err);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     };
+    init();
+    return () => { cancelled = true; };
   }, []);
 
   if (!ready) return null;
