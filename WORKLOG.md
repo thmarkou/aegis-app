@@ -69,6 +69,14 @@
 ### Styling
 - Tactical OLED Black & Amber για όλα τα νέα components
 
+### Git
+- Commit & push Phase 1 στο GitHub (aaf7429)
+
+### Επόμενο (Phase 2)
+- Dashboard: Survival Readiness Score
+- Comms: Radios CRUD, Antenna Calculator, SOS
+- Map: Repeaters CRUD, χάρτης, Bearing Arrow
+
 ---
 
 ## Template για νέες ημέρες
