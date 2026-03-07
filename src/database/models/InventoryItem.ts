@@ -18,6 +18,7 @@ export default class InventoryItem extends Model {
   @field('calories') calories!: number | null;
   @field('quantity') quantity!: number;
   @field('is_essential') isEssential!: boolean;
+  @field('notes') notes!: string | null;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 

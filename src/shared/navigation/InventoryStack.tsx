@@ -4,14 +4,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { KitListScreen } from '../../features/inventory/screens/KitListScreen';
 import { KitDetailScreen } from '../../features/inventory/screens/KitDetailScreen';
+import { KitFormScreen } from '../../features/inventory/screens/KitFormScreen';
 import { ItemFormScreen } from '../../features/inventory/screens/ItemFormScreen';
 import { ProfileScreen } from '../../features/inventory/screens/ProfileScreen';
+import { ProfileFormScreen } from '../../features/inventory/screens/ProfileFormScreen';
 
 export type InventoryStackParamList = {
   KitList: undefined;
   KitDetail: { kitId: string };
+  KitForm: { kitId: string };
   ItemForm: { kitId: string; itemId?: string };
   Profiles: undefined;
+  ProfileForm: { profileId?: string };
 };
 
 const Stack = createNativeStackNavigator<InventoryStackParamList>();
@@ -40,9 +44,25 @@ export function InventoryStack() {
           ),
         })}
       />
-      <Stack.Screen name="KitDetail" component={KitDetailScreen} options={{ title: 'Kit' }} />
+      <Stack.Screen
+        name="KitDetail"
+        component={KitDetailScreen}
+        options={({ route, navigation }) => ({
+          title: 'Kit',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('KitForm', { kitId: route.params.kitId })}
+              style={{ marginRight: 8 }}
+            >
+              <Ionicons name="pencil-outline" size={22} color="#FFBF00" />
+            </TouchableOpacity>
+          ),
+        })}
+      />
+      <Stack.Screen name="KitForm" component={KitFormScreen} options={{ title: 'Edit Kit' }} />
       <Stack.Screen name="ItemForm" component={ItemFormScreen} options={{ title: 'Item' }} />
       <Stack.Screen name="Profiles" component={ProfileScreen} options={{ title: 'Profiles' }} />
+      <Stack.Screen name="ProfileForm" component={ProfileFormScreen} options={{ title: 'Profile' }} />
     </Stack.Navigator>
   );
 }

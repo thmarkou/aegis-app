@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: 'kits',
@@ -24,6 +24,16 @@ export default appSchema({
         { name: 'calories', type: 'number', isOptional: true },
         { name: 'quantity', type: 'number' },
         { name: 'is_essential', type: 'boolean' },
+        { name: 'notes', type: 'string', isOptional: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'profiles',
+      columns: [
+        { name: 'name', type: 'string' },
+        { name: 'body_weight_kg', type: 'number' },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

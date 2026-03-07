@@ -44,6 +44,33 @@
 
 ---
 
+## 2026-03-08 (Σάββατο) – Phase 1: Profiles & Inventory Enhancements
+
+### Database
+- **Migration v1→v2**: `profiles` table (name, body_weight_kg, created_at, updated_at)
+- **Migration**: `inventory_items` + `notes` column (string, optional)
+- **Profile model** (`src/database/models/Profile.ts`)
+- Profile registered in Database
+
+### Profile UI
+- **ProfileScreen**: List, Add (FAB), Edit (tap), Delete (long-press)
+- **ProfileFormScreen**: name, body_weight_kg
+- Profiles stack: Profiles → ProfileForm
+
+### KitDetailScreen
+- **Weight warning**: `useWeightWarning` με body_weight_kg από πρώτο profile, weightPercent από settings
+- **Edit kit**: headerRight pencil → KitFormScreen (name, description)
+
+### ItemFormScreen
+- **notes**: multiline TextInput
+- **is_essential**: Switch (tactical theme)
+- **calories**: numeric input
+
+### Styling
+- Tactical OLED Black & Amber για όλα τα νέα components
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

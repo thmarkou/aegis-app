@@ -6,6 +6,7 @@ import schema from './schema';
 import migrations from './migrations';
 import Kit from './models/Kit';
 import InventoryItem from './models/InventoryItem';
+import Profile from './models/Profile';
 import Radio from './models/Radio';
 import Repeater from './models/Repeater';
 
@@ -20,5 +21,5 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [Kit, InventoryItem, Radio, Repeater],
+  modelClasses: [Kit, InventoryItem, Profile, Radio, Repeater],
 });
