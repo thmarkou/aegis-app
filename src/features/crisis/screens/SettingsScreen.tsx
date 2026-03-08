@@ -10,11 +10,22 @@ export function SettingsScreen() {
   const logout = useAppStore((s) => s.logout);
   const [expiryDays, setExpiryDays] = useState('14');
   const [weightPercent, setWeightPercent] = useState('20');
+  const [callsign, setCallsign] = useState('SY2EYH');
+  const [ssid, setSsid] = useState('7');
   const [newPin, setNewPin] = useState('');
 
   useEffect(() => {
-    SecureSettings.getExpiryDays().then((d) => setExpiryDays(String(d)));
-    SecureSettings.getWeightPercent().then((p) => setWeightPercent(String(p)));
+    Promise.all([
+      SecureSettings.getExpiryDays(),
+      SecureSettings.getWeightPercent(),
+      SecureSettings.getCallsign(),
+      SecureSettings.getSsid(),
+    ]).then(([d, p, c, s]) => {
+      setExpiryDays(String(d));
+      setWeightPercent(String(p));
+      setCallsign(c);
+      setSsid(String(s));
+    });
   }, []);
 
   const handleSaveExpiry = async () => {
@@ -65,6 +76,37 @@ export function SettingsScreen() {
           keyboardType="number-pad"
         />
         <Text style={{ color: tactical.zinc[500], fontSize: 16 }}>days</Text>
+      </View>
+
+      <Text style={tacticalStyles.sectionTitle}>APRS / Radio</Text>
+      <Text style={tacticalStyles.sectionDesc}>Callsign and SSID for APRS packets.</Text>
+      <View style={tacticalStyles.rowInline}>
+        <Text style={[tacticalStyles.label, { marginBottom: 0 }]}>Callsign</Text>
+        <TextInput
+          style={[tacticalStyles.inputSmall, { width: 120 }]}
+          value={callsign}
+          onChangeText={(t) => setCallsign(t.toUpperCase().slice(0, 9))}
+          onBlur={async () => await SecureSettings.setCallsign(callsign)}
+          placeholder="SY2EYH"
+          placeholderTextColor="#666"
+          autoCapitalize="characters"
+        />
+      </View>
+      <View style={tacticalStyles.rowInline}>
+        <Text style={[tacticalStyles.label, { marginBottom: 0 }]}>SSID</Text>
+        <TextInput
+          style={tacticalStyles.inputSmall}
+          value={ssid}
+          onChangeText={(t) => setSsid(t.replace(/\D/g, '').slice(0, 2))}
+          onBlur={async () => {
+            const n = parseInt(ssid, 10);
+            if (!isNaN(n)) await SecureSettings.setSsid(n);
+          }}
+          keyboardType="number-pad"
+          placeholder="7"
+          placeholderTextColor="#666"
+        />
+        <Text style={{ color: tactical.zinc[500], fontSize: 14 }}>(0–15)</Text>
       </View>
 
       <Text style={tacticalStyles.sectionTitle}>Weight warning</Text>

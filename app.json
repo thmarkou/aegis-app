@@ -16,7 +16,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.aegis.survival"
+      "bundleIdentifier": "app.aegis.survival",
+      "disableNotifications": true
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +27,13 @@
       "package": "app.aegis.survival"
     },
     "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "AEGIS needs location for APRS beacon packets.",
+          "locationAlwaysAndWhenInUsePermission": "AEGIS needs location for APRS beacon packets."
+        }
+      ],
       [
         "expo-notifications",
         {

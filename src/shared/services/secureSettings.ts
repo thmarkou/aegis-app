@@ -6,6 +6,8 @@ const KEYS = {
   shtfMode: 'aegis_shtf_mode',
   expiryDays: 'aegis_expiry_days',
   weightPercent: 'aegis_weight_percent',
+  callsign: 'aegis_callsign',
+  ssid: 'aegis_ssid',
 } as const;
 
 const DEFAULTS = {
@@ -14,6 +16,8 @@ const DEFAULTS = {
   shtfMode: 'false',
   expiryDays: '14',
   weightPercent: '20',
+  callsign: 'SY2EYH',
+  ssid: '7',
 };
 
 export async function getAdminPin(): Promise<string> {
@@ -57,4 +61,22 @@ export async function getWeightPercent(): Promise<number> {
 
 export async function setWeightPercent(pct: number): Promise<void> {
   await SecureStore.setItemAsync(KEYS.weightPercent, String(pct));
+}
+
+export async function getCallsign(): Promise<string> {
+  return (await SecureStore.getItemAsync(KEYS.callsign)) ?? DEFAULTS.callsign;
+}
+
+export async function setCallsign(callsign: string): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.callsign, callsign.trim().toUpperCase());
+}
+
+export async function getSsid(): Promise<number> {
+  const v = await SecureStore.getItemAsync(KEYS.ssid);
+  return v ? parseInt(v, 10) : parseInt(DEFAULTS.ssid, 10);
+}
+
+export async function setSsid(ssid: number): Promise<void> {
+  const n = Math.max(0, Math.min(15, Math.floor(ssid)));
+  await SecureStore.setItemAsync(KEYS.ssid, String(n));
 }

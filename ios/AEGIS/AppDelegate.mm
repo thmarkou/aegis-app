@@ -23,9 +23,6 @@
 
 - (NSURL *)bundleURL
 {
-  // Use embedded bundle so app runs from Xcode without Metro
-  NSURL *embedded = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
-  if (embedded) return embedded;
 #if DEBUG
   return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@".expo/.virtual-metro-entry"];
 #else

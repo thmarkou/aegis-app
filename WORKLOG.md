@@ -79,6 +79,34 @@
 
 ---
 
+## 2026-03-09 (Κυριακή) – Phase 2: Radio Officer & Digital Modes
+
+### Phase 2a & 2b – APRS & Comms UI
+- **expo-location**: εγκατάσταση, plugin στο app.json, permissions
+- **SecureStore**: `secureSettings.ts` – `getCallsign`, `setCallsign`, `getSsid`, `setSsid` (defaults: SY2EYH, 7)
+- **SettingsScreen**: APRS/Radio section – Callsign, SSID
+- **CommsScreen**: Status bar (LINK: VOX/ANALOG, LINK: DIGITAL, DISTRESS MODE), SEND BEACON, RADIO SMS, DISTRESS MODE (auto-beacon 5 min)
+- **AprsService**: `buildPositionPacket()`, `buildSmsgtePacket()` – APRS format
+
+### Phase 2c – Audio Engine & AFSK
+- **AudioEngine.ts**: Bell 202 AFSK (Mark 1200Hz, Space 2200Hz, 1200 baud)
+- `stringToBits()` – 8N1 serial encoding
+- `generateAFSKWav()` – PCM WAV με PTT delay 500ms, post delay 100ms, amplitude 85%
+- `playAFSKPacket()` – expo-av playback, DoNotMix audio mode
+- **WaveformVisualizer**: animated bars κατά τη μετάδοση
+- **AudioRoutingService**: placeholder για USB detection (expo-av δεν έχει getAudioOutputsAsync)
+- Integration: SEND BEACON & RADIO SMS → AFSK playback
+
+### iOS Build
+- Prebuild με expo-location, expo-av (ExpoLocation, EXAV pods)
+- `ios.disableNotifications: true` – Personal Team (χωρίς Push entitlement)
+- `ios:release` script – build χωρίς Metro
+
+### Git
+- Commit & push Phase 2 στο GitHub (2026-03-09)
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown
