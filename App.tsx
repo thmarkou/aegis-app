@@ -1,9 +1,11 @@
 // NativeWind disabled - causes expo start to hang
 import React, { useEffect, useState } from 'react';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { database } from './src/database';
+import { TacticalSplashScreen } from './src/shared/components/TacticalSplashScreen';
 import { useAppStore } from './src/shared/store/useAppStore';
 import { TabNavigator } from './src/shared/navigation/TabNavigator';
 import { LoginScreen } from './src/features/auth/screens/LoginScreen';
@@ -23,8 +25,14 @@ function AppContent() {
   );
 }
 
+SplashScreen.preventAutoHideAsync();
+
 export default function App() {
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +53,7 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  if (!ready) return null;
+  if (!ready) return <TacticalSplashScreen />;
 
   return (
     <SafeAreaProvider>

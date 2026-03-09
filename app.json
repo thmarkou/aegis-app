@@ -5,28 +5,39 @@
     "slug": "aegis-app",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/icons/aegis.png",
     "scheme": "aegis",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/images/icons/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0a0a0a"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.aegis.survival",
-      "disableNotifications": true
+      "disableNotifications": true,
+      "entitlements": {
+        "aps-environment": null
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0a0a0a"
+        "foregroundImage": "./assets/images/icons/aegis.png",
+        "backgroundColor": "#000000"
       },
       "package": "app.aegis.survival"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icons/splash.png",
+          "backgroundColor": "#000000",
+          "imageWidth": 280
+        }
+      ],
       [
         "expo-location",
         {
@@ -37,7 +48,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
+          "icon": "./assets/images/icons/notification-icon.png",
           "color": "#22c55e"
         }
       ],

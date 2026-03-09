@@ -11,7 +11,9 @@
     "android": "expo run:android",
     "web": "expo start --web",
     "prebuild:ios": "expo prebuild --platform ios",
-    "prebuild:android": "expo prebuild --platform android"
+    "prebuild:android": "expo prebuild --platform android",
+    "generate:notification-icon": "node scripts/generate-notification-icon.js",
+    "generate:splash": "node scripts/generate-splash-images.js"
   },
   "dependencies": {
     "@nozbe/watermelondb": "^0.27.1",
@@ -32,11 +34,13 @@
     "expo-location": "~18.0.10",
     "expo-notifications": "~0.29.0",
     "expo-secure-store": "~14.0.1",
+    "expo-splash-screen": "~0.29.24",
     "expo-status-bar": "~2.0.0",
     "nativewind": "^4.2.2",
     "react": "18.3.1",
     "react-native": "0.76.5",
     "react-native-get-random-values": "1.11.0",
+    "react-native-maps": "^1.20.1",
     "react-native-reanimated": "~3.16.0",
     "react-native-safe-area-context": "4.12.0",
     "react-native-screens": "~4.4.0",
@@ -51,6 +55,7 @@
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "eslint-config-expo": "~8.0.0",
+    "sharp": "^0.34.5",
     "typescript": "~5.3.0"
   },
   "engines": {

@@ -107,6 +107,34 @@
 
 ---
 
+## 2026-03-10 (Δευτέρα) – Splash, Logo & iOS Provisioning
+
+### Splash Screen
+- **expo-splash-screen** plugin στο app.json (image, backgroundColor, imageWidth: 280)
+- **splash.png** (1024×1024): νέο τετράγωνο asset από aegis.png
+- **generate-splash-images.js**: δημιουργεί splash.png + iOS SplashScreenLogo.imageset (1x, 2x, 3x)
+- app.json splash.image → `./assets/images/icons/splash.png`
+- Prebuild --clean για iOS
+
+### Logo & Branding
+- **LoginScreen**: αντικατάσταση Ionicons shield-checkmark με logo (aegis.png), μέγεθος 180×180
+- **TacticalSplashScreen**: logo 200×200, glow ring 260×260
+- Icons στο `assets/images/icons/` (aegis.png, splash.png, notification-icon.png)
+- Διαγραφή legacy: icon.png, adaptive-icon.png, splash-icon.png
+
+### iOS Provisioning (Personal Team)
+- Αφαίρεση **aps-environment** από AEGIS.entitlements (Personal Team δεν υποστηρίζει Push)
+- app.json: `ios.entitlements: { "aps-environment": null }`
+- withoutPushForPersonalTeam plugin (backup)
+
+### Map
+- react-native-maps@1.20.1, tacticalMapStyle, custom marker με callsign
+
+### Git
+- Commit & push στο GitHub
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../../../shared/store/useAppStore';
 import { PinScreen } from './PinScreen';
@@ -20,7 +20,11 @@ export function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.top}>
-        <Ionicons name="shield-checkmark" size={72} color={tactical.amber} />
+        <Image
+          source={require('../../../../assets/images/icons/aegis.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>AEGIS</Text>
         <Text style={styles.subtitle}>Digital Survival OS</Text>
       </View>
@@ -59,6 +63,7 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: tactical.black, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 48 },
   top: { alignItems: 'center' },
+  logo: { width: 180, height: 180 },
   title: { color: '#ffffff', fontSize: 36, fontWeight: '800', marginTop: 16, letterSpacing: 4 },
   subtitle: { color: '#71717a', fontSize: 14, letterSpacing: 4, marginTop: 8, textTransform: 'uppercase' },
   buttons: { width: '100%', paddingHorizontal: 24, gap: 16 },
