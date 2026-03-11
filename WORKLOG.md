@@ -135,6 +135,72 @@
 
 ---
 
+## 2026-03-06 (Παρασκευή) – UI Layout & Health Integration
+
+### Health Integration Expansion (Apple HealthKit / Garmin Fenix 8)
+- **GarminSyncService**: νέα permissions – OxygenSaturation, RestingHeartRate, ActiveEnergyBurned
+- Polling κάθε 20s: SpO2 (αίμα οξυγόνου %), RHR (ηρεμιστικός σφυγμός), Active Energy (kcal σήμερα)
+- **useGarminStore**: νέα state – spo2, restingHeartRate, activeEnergyKcal
+- **BIO-METRICS** section στο Dashboard (στυλ ENV/Telemetry):
+  - HR: [τιμή] BPM με heart icon
+  - SpO2: [τιμή]% με O₂ icon
+  - EFFORT: (HR - RHR) / (MaxHR - RHR) ή HR zone (REST/LIGHT/MODERATE/HARD/MAX)
+  - ACTIVE: kcal με flame icon
+- **Smart Alerts**: SpO2 < 90% → κόκκινο + αναλαμπή, HR > 160 → "HIGH EXERTION"
+- **APRS**: append bio string [HR:72 SpO2:98%] σε Status/SOS packets (buildStatusPacket, buildPositionPacket)
+- **Reliability**: -- για missing metrics (χωρίς crash)
+- **withHealthKit.js**: ενημερωμένο NSHealthShareUsageDescription
+
+### ItemFormScreen
+- **headerLargeTitle: false** – σταθερό header, πλήρης ορατότητα πεδίων (Name, Category κλπ.)
+- **contentInsetAdjustmentBehavior="automatic"** – σωστό safe area στο ScrollView
+
+### KitListScreen
+- **headerLargeTitle: false** – αποφυγή overlap περιεχομένου με header
+- **contentInsetAdjustmentBehavior="automatic"** + **contentContainerStyle** (paddingTop: 16) στο FlatList
+
+### InventoryStack – Header Icons
+- Κύκλος 44×44 με `alignItems: 'center'`, `justifyContent: 'center'` για pencil & people icons
+- **iconCentered** style: `textAlign: 'center'`, `transform: [{ translateX: -0.5 }, { translateY: -1 }]` – διόρθωση γνωστού Ionicons alignment offset
+
+### Git
+- Αλλαγές προς commit & push στο GitHub
+- Πρόσφατα commits (αναφορά): `79ff31a` 2026-03-09, `2b08fd0` 2026-03-09, `116a052` 2026-03-08, `aaf7429` 2026-03-08, `3bebc07` 2026-03-07
+
+---
+
+## 2026-03-11 – Phase 3b: Offline Tactical Mapping & Tile Caching
+
+### Map Tile Caching
+- **TileCacheService** (`src/features/map/services/TileCacheService.ts`): CartoDB dark tiles, expo-file-system storage
+- Download tiles to `{z}/{x}/{y}.png`, 500MB limit, zoom 10–18
+- **UrlTile** (online): `tiles.basemaps.cartocdn.com/dark_all`
+- **LocalTile** (offline): reads from cached tiles
+
+### Tactical Download
+- "Tactical Download" button: 5km radius around GPS, zoom 10–18
+- Progress bar με ποσοστό κατά τη λήψη
+
+### Visual Indicators
+- **Offline Mode** badge (Amber) όταν δεν υπάρχει internet
+- @react-native-community/netinfo για network state
+
+### Tactical Markers
+- Location marker (callsign SY2EYH-7) πάνω από tiles (zIndex 10)
+- Repeaters από DB ως waypoints (zIndex 5)
+
+### Auto-cache
+- onRegionChangeComplete: cache visible region (2km max) μετά από 2s debounce
+
+### Settings
+- **Clear Cache** button, εμφάνιση cache size (MB / 500 MB)
+- useFocusEffect για refresh όταν ανοίγει το Settings
+
+### Dependencies
+- @react-native-community/netinfo
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

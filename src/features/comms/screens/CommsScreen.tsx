@@ -1,52 +1,65 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
   StyleSheet,
   Switch,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { Ionicons } from '@expo/vector-icons';
+import { Q } from '@nozbe/watermelondb';
+import { database } from '../../../database';
+import type MessageLog from '../../../database/models/MessageLog';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import * as SecureSettings from '../../../shared/services/secureSettings';
-import { buildPositionPacket, buildSmsgtePacket } from '../../../services/AprsService';
+import { buildPositionPacket, buildStatusPacket } from '../../../services/AprsService';
+import { useGarminStore, buildBioString } from '../../../shared/store/useGarminStore';
 import { playAFSKPacket } from '../../../services/AudioEngine';
-import {
-  getAudioOutputMode,
-  initAudioRoutingListener,
-} from '../../../services/AudioRoutingService';
 import { WaveformVisualizer } from '../components/WaveformVisualizer';
+import { useBatteryTelemetry } from '../../../shared/hooks/useBatteryTelemetry';
+import { BatteryTelemetry } from '../../../shared/components/BatteryTelemetry';
 
-type LinkMode = 'digital' | 'analog' | 'distress';
+const QUICK_MESSAGES = {
+  SOS: [
+    { label: 'SOS: MEDICAL', value: 'SOS: MEDICAL' },
+    { label: 'SOS: INJURED', value: 'SOS: INJURED' },
+    { label: 'SOS: LOST', value: 'SOS: LOST' },
+  ],
+  Status: [
+    { label: 'ALL OK', value: 'ALL OK' },
+    { label: 'EN ROUTE', value: 'EN ROUTE' },
+    { label: 'STATIONARY', value: 'STATIONARY' },
+  ],
+  Resources: [
+    { label: 'LOW WATER', value: 'LOW WATER' },
+    { label: 'LOW POWER', value: 'LOW POWER' },
+    { label: 'RESUPPLY NEEDED', value: 'RESUPPLY NEEDED' },
+  ],
+} as const;
+
+type CommsRouteParams = { emergencyMessage?: string; emergencyAttachGps?: boolean };
 
 export function CommsScreen() {
-  const [linkMode, setLinkMode] = useState<LinkMode>(
-    () => getAudioOutputMode() as LinkMode
-  );
-
-  useEffect(() => {
-    const unsubscribe = initAudioRoutingListener((mode) =>
-      setLinkMode(mode as LinkMode)
-    );
-    return unsubscribe;
-  }, []);
-  const [distressMode, setDistressMode] = useState(false);
-  const [location, setLocation] = useState<{ lat: number; lon: number; alt?: number } | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [lastPacket, setLastPacket] = useState<string | null>(null);
-  const [lastBeaconTime, setLastBeaconTime] = useState<number | null>(null);
+  const route = useRoute<RouteProp<{ Comms: CommsRouteParams }, 'Comms'>>();
+  const [message, setMessage] = useState('');
+  const [attachGps, setAttachGps] = useState(false);
+  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [callsign, setCallsign] = useState('SY2EYH');
   const [ssid, setSsid] = useState(7);
-  const [smsPhone, setSmsPhone] = useState('');
-  const [smsMessage, setSmsMessage] = useState('');
-  const [showSmsForm, setShowSmsForm] = useState(false);
-  const [sending, setSending] = useState(false);
   const [isTransmitting, setIsTransmitting] = useState(false);
+  const [sentLogs, setSentLogs] = useState<MessageLog[]>([]);
+  const { pct: batteryPct, battColor } = useBatteryTelemetry();
+  const garminState = useGarminStore((s) => ({
+    connected: s.connected,
+    heartRate: s.heartRate,
+    spo2: s.spo2,
+  }));
+  const bioString = buildBioString(garminState);
 
   const loadSettings = useCallback(async () => {
     const [c, s] = await Promise.all([SecureSettings.getCallsign(), SecureSettings.getSsid()]);
@@ -54,257 +67,349 @@ export function CommsScreen() {
     setSsid(s);
   }, []);
 
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  const requestLocation = useCallback(async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setLocationError('Location permission denied');
-      return;
-    }
-    setLocationError(null);
-    try {
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setLocation({
-        lat: loc.coords.latitude,
-        lon: loc.coords.longitude,
-        alt: loc.coords.altitude ?? undefined,
-      });
-    } catch (e) {
-      setLocationError(e instanceof Error ? e.message : 'Location failed');
-    }
+  const loadLogs = useCallback(async () => {
+    const logs = await database
+      .get<MessageLog>('message_logs')
+      .query(Q.sortBy('sent_at', Q.desc))
+      .fetch();
+    setSentLogs(logs);
   }, []);
 
   useEffect(() => {
-    requestLocation();
-  }, [requestLocation]);
+    loadSettings();
+    loadLogs();
+  }, [loadSettings, loadLogs]);
 
-  const sendBeacon = useCallback(async () => {
-    if (!location) {
-      Alert.alert('No GPS', 'Location not available. Check permissions.');
-      return;
-    }
-    setSending(true);
-    try {
-      const packet = buildPositionPacket(callsign, ssid, {
-        latitude: location.lat,
-        longitude: location.lon,
-        altitude: location.alt,
-        comment: distressMode ? 'DISTRESS AEGIS' : undefined,
-      });
-      setLastPacket(packet);
-      setLastBeaconTime(Date.now());
-      setIsTransmitting(true);
-      await playAFSKPacket(packet);
-    } catch (e) {
-      Alert.alert('Audio Error', e instanceof Error ? e.message : 'Failed to play AFSK');
-    } finally {
-      setIsTransmitting(false);
-      setSending(false);
-    }
-  }, [location, callsign, ssid, distressMode]);
-
-  const sendSmsPacket = useCallback(async () => {
-    const phone = smsPhone.trim().replace(/\D/g, '');
-    if (phone.length < 10) {
-      Alert.alert('Invalid', 'Enter a valid phone number');
-      return;
-    }
-    if (!smsMessage.trim()) {
-      Alert.alert('Invalid', 'Enter a message');
-      return;
-    }
-    setSending(true);
-    try {
-      const packet = buildSmsgtePacket(callsign, ssid, `+${phone}`, smsMessage.trim());
-      setLastPacket(packet);
-      setShowSmsForm(false);
-      setSmsPhone('');
-      setSmsMessage('');
-      setIsTransmitting(true);
-      await playAFSKPacket(packet);
-    } catch (e) {
-      Alert.alert('Audio Error', e instanceof Error ? e.message : 'Failed to play AFSK');
-    } finally {
-      setIsTransmitting(false);
-      setSending(false);
-    }
-  }, [callsign, ssid, smsPhone, smsMessage]);
-
-  // Distress mode: auto-beacon every 5 minutes
   useEffect(() => {
-    if (!distressMode || !location) return;
-    const interval = setInterval(() => {
-      sendBeacon();
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [distressMode, location, sendBeacon]);
+    const params = route.params as CommsRouteParams | undefined;
+    if (params?.emergencyMessage) {
+      setMessage(params.emergencyMessage);
+      setAttachGps(params.emergencyAttachGps ?? true);
+    }
+  }, [route.params]);
 
-  const effectiveLinkMode: LinkMode = distressMode ? 'distress' : linkMode;
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setLocation({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const handleQuickMessage = (value: string) => {
+    setMessage((prev) => (prev ? `${prev}\n${value}` : value));
+  };
+
+  const getEffectiveMessage = useCallback(() => {
+    let text = message.trim();
+    if (attachGps && location) {
+      text = text ? `${text} [${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}]` : `[${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}]`;
+    }
+    return text;
+  }, [message, attachGps, location]);
+
+  const handleSend = useCallback(async () => {
+    const text = getEffectiveMessage();
+    if (!text.trim()) return;
+
+    if (attachGps && !location) return;
+
+    setIsTransmitting(true);
+    try {
+      let packet: string;
+      if (attachGps && location) {
+        packet = buildPositionPacket(callsign, ssid, {
+          latitude: location.lat,
+          longitude: location.lon,
+          comment: message.trim() || undefined,
+        }, batteryPct, bioString);
+      } else {
+        packet = buildStatusPacket(callsign, ssid, message.trim(), batteryPct, bioString);
+      }
+
+      await playAFSKPacket(packet);
+
+      await database.write(async () => {
+        await database.get<MessageLog>('message_logs').create((r) => {
+          r.message = text;
+          r.sentAt = Date.now();
+        });
+      });
+      await loadLogs();
+      setMessage('');
+    } catch (e) {
+      console.error('[Comms] Send failed:', e);
+    } finally {
+      setIsTransmitting(false);
+    }
+  }, [getEffectiveMessage, message, attachGps, location, callsign, ssid, loadLogs, batteryPct, bioString]);
+
+  const canSend = getEffectiveMessage().trim().length > 0 && (!attachGps || location);
 
   return (
-    <ScrollView
-      style={[styles.screen, distressMode && styles.screenDistress]}
-      contentContainerStyle={styles.content}
-    >
-      {/* Status bar */}
-      <View
-        style={[
-          tacticalStyles.statusBar,
-          effectiveLinkMode === 'digital' && tacticalStyles.statusBarDigital,
-          effectiveLinkMode === 'analog' && tacticalStyles.statusBarAnalog,
-          effectiveLinkMode === 'distress' && tacticalStyles.statusBarDistress,
-        ]}
-      >
-        <Ionicons
-          name="radio"
-          size={18}
-          color={effectiveLinkMode === 'distress' ? '#ef4444' : '#ffffff'}
-        />
-        <Text style={tacticalStyles.statusText}>
-          {effectiveLinkMode === 'digital'
-            ? 'LINK: DIGITAL'
-            : effectiveLinkMode === 'distress'
-              ? 'DISTRESS MODE'
-              : 'LINK: VOX/ANALOG'}
-        </Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <View style={styles.headerRow}>
+        <Text style={tacticalStyles.titleAmber}>Tactical Messaging Center</Text>
+        <BatteryTelemetry pct={batteryPct} battColor={battColor} />
       </View>
 
-      <Text style={[tacticalStyles.titleAmber, distressMode && styles.textDistress]}>
-        Radio Comms
-      </Text>
+      {/* Quick Message Grid */}
+      <Text style={styles.sectionLabel}>SOS</Text>
+      <View style={styles.grid}>
+        {QUICK_MESSAGES.SOS.map((m) => (
+          <TouchableOpacity
+            key={m.value}
+            style={[styles.gridBtn, styles.sosBtn]}
+            onPress={() => handleQuickMessage(m.value)}
+          >
+            <Text style={styles.sosBtnText}>{m.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-      <WaveformVisualizer
-        isActive={isTransmitting}
-        color={effectiveLinkMode === 'distress' ? '#ef4444' : tactical.amber}
+      <Text style={styles.sectionLabel}>Status</Text>
+      <View style={styles.grid}>
+        {QUICK_MESSAGES.Status.map((m) => (
+          <TouchableOpacity
+            key={m.value}
+            style={[styles.gridBtn, styles.statusBtn]}
+            onPress={() => handleQuickMessage(m.value)}
+          >
+            <Text style={styles.gridBtnText}>{m.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.sectionLabel}>Resources</Text>
+      <View style={styles.grid}>
+        {QUICK_MESSAGES.Resources.map((m) => (
+          <TouchableOpacity
+            key={m.value}
+            style={[styles.gridBtn, styles.resourceBtn]}
+            onPress={() => handleQuickMessage(m.value)}
+          >
+            <Text style={styles.gridBtnText}>{m.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Terminal-style Input */}
+      <Text style={styles.sectionLabel}>Message Draft</Text>
+      <TextInput
+        style={styles.terminalInput}
+        value={message}
+        onChangeText={setMessage}
+        placeholder="Type or tap above..."
+        placeholderTextColor={tactical.zinc[500]}
+        multiline
+        editable={!isTransmitting}
       />
 
-      {locationError && (
-        <TouchableOpacity style={tacticalStyles.btnSecondary} onPress={requestLocation}>
-          <Text style={tacticalStyles.btnSecondaryText}>Grant Location</Text>
-        </TouchableOpacity>
-      )}
-
-      {location && (
-        <Text style={tacticalStyles.subtext}>
-          {location.lat.toFixed(5)}° {location.lon.toFixed(5)}°
+      {/* Attach GPS Toggle */}
+      <View style={styles.gpsRow}>
+        <Text style={tacticalStyles.label}>Attach GPS</Text>
+        <Switch
+          value={attachGps}
+          onValueChange={setAttachGps}
+          trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
+          thumbColor={attachGps ? tactical.black : tactical.zinc[400]}
+        />
+      </View>
+      {attachGps && location && (
+        <Text style={styles.gpsHint}>
+          Will append [Lat, Lon] to message
         </Text>
       )}
 
-      <TouchableOpacity
-        style={[tacticalStyles.btnPrimary, styles.btnAction, distressMode && styles.btnDistress]}
-        onPress={sendBeacon}
-        disabled={!location || sending}
-      >
-        {sending ? (
-          <ActivityIndicator color={tactical.black} />
-        ) : (
-          <Text style={tacticalStyles.btnPrimaryText}>SEND BEACON</Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[tacticalStyles.btnSecondary, styles.btnAction]}
-        onPress={() => setShowSmsForm(true)}
-      >
-        <Text style={tacticalStyles.btnSecondaryText}>RADIO SMS</Text>
-      </TouchableOpacity>
-
-      {showSmsForm && (
-        <View style={styles.smsForm}>
-          <Text style={tacticalStyles.label}>Destination</Text>
-          <TextInput
-            style={tacticalStyles.input}
-            value={smsPhone}
-            onChangeText={setSmsPhone}
-            placeholder="+3069XXXXXXXX"
-            placeholderTextColor="#666"
-            keyboardType="phone-pad"
-          />
-          <Text style={tacticalStyles.label}>Message</Text>
-          <TextInput
-            style={[tacticalStyles.input, { minHeight: 60, textAlignVertical: 'top' }]}
-            value={smsMessage}
-            onChangeText={setSmsMessage}
-            placeholder="Message text"
-            placeholderTextColor="#666"
-            multiline
-          />
-          <View style={styles.smsFormRow}>
-            <TouchableOpacity style={tacticalStyles.btnSmall} onPress={sendSmsPacket}>
-              <Text style={tacticalStyles.btnSmallText}>Send</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={tacticalStyles.btnSecondary}
-              onPress={() => {
-                setShowSmsForm(false);
-                setSmsPhone('');
-                setSmsMessage('');
-              }}
-            >
-              <Text style={tacticalStyles.btnSecondaryText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+      {/* TRANSMITTING Animation */}
+      {isTransmitting && (
+        <View style={styles.transmittingWrap}>
+          <WaveformVisualizer isActive color={tactical.amber} />
+          <Text style={styles.transmittingText}>TRANSMITTING...</Text>
         </View>
       )}
 
-      <View style={styles.distressRow}>
-        <Text style={[tacticalStyles.label, { marginBottom: 0 }]}>DISTRESS MODE</Text>
-        <Switch
-          value={distressMode}
-          onValueChange={setDistressMode}
-          trackColor={{ false: tactical.zinc[700], true: '#ef4444' }}
-          thumbColor={distressMode ? '#ffffff' : tactical.zinc[400]}
-        />
+      {/* PUSH TO SEND */}
+      <TouchableOpacity
+        style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
+        onPress={handleSend}
+        disabled={!canSend || isTransmitting}
+      >
+        {isTransmitting ? (
+          <ActivityIndicator color={tactical.black} size="large" />
+        ) : (
+          <Text style={styles.sendBtnText}>PUSH TO SEND (APRS)</Text>
+        )}
+      </TouchableOpacity>
+
+      {/* Sent Messages Log */}
+      <Text style={styles.sectionLabel}>Sent Messages</Text>
+      <View style={styles.logBox}>
+        {sentLogs.length === 0 ? (
+          <Text style={styles.logEmpty}>No messages sent yet</Text>
+        ) : (
+          sentLogs.slice(0, 20).map((log) => (
+            <View key={log.id} style={styles.logRow}>
+              <Text style={styles.logTime}>
+                {new Date(log.sentAt).toLocaleString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </Text>
+              <Text style={styles.logMsg} numberOfLines={2}>
+                {log.message}
+              </Text>
+            </View>
+          ))
+        )}
       </View>
 
       <Text style={tacticalStyles.warningLabel}>
         NOTICE: ALL TRANSMISSIONS ARE PUBLIC. NO ENCRYPTION.
       </Text>
-
-      {lastPacket && (
-        <View style={styles.packetBox}>
-          <Text style={tacticalStyles.label}>Last packet</Text>
-          <Text style={styles.packetText} selectable>
-            {lastPacket}
-          </Text>
-          {lastBeaconTime && (
-            <Text style={tacticalStyles.cardSubtext}>
-              {new Date(lastBeaconTime).toLocaleTimeString()}
-            </Text>
-          )}
-        </View>
-      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: tactical.black },
-  screenDistress: { backgroundColor: '#1a0a0a' },
-  content: { padding: 24, paddingBottom: 48 },
-  btnAction: { marginTop: 16 },
-  btnDistress: { backgroundColor: '#ef4444' },
-  textDistress: { color: '#ef4444' },
-  smsForm: { marginTop: 24, marginBottom: 16 },
-  smsFormRow: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  distressRow: {
+  content: { padding: 16, paddingBottom: 48 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionLabel: {
+    color: tactical.amber,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 20,
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  gridBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  sosBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: tactical.amber,
+  },
+  sosBtnText: {
+    color: tactical.amber,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statusBtn: {
+    backgroundColor: tactical.zinc[900],
+    borderColor: tactical.zinc[700],
+  },
+  gridBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  resourceBtn: {
+    backgroundColor: tactical.zinc[900],
+    borderColor: tactical.zinc[700],
+  },
+  terminalInput: {
+    backgroundColor: '#0a0a0a',
+    borderWidth: 1,
+    borderColor: tactical.amber,
+    borderRadius: 8,
+    padding: 12,
+    color: tactical.amber,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  gpsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 24,
+    marginTop: 16,
   },
-  packetBox: {
+  gpsHint: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    marginTop: 4,
+  },
+  transmittingWrap: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  transmittingText: {
+    color: tactical.amber,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginTop: 4,
+  },
+  sendBtn: {
     marginTop: 24,
+    paddingVertical: 20,
+    borderRadius: 12,
+    backgroundColor: tactical.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: tactical.amber,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  sendBtnDisabled: {
+    backgroundColor: tactical.zinc[700],
+    shadowOpacity: 0,
+  },
+  sendBtnText: {
+    color: tactical.black,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  logBox: {
+    marginTop: 16,
     padding: 16,
     backgroundColor: tactical.zinc[900],
     borderRadius: 12,
     borderWidth: 1,
     borderColor: tactical.zinc[700],
   },
-  packetText: { color: tactical.zinc[400], fontSize: 12, fontFamily: 'monospace' },
+  logEmpty: {
+    color: tactical.zinc[500],
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  logRow: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: tactical.zinc[700],
+  },
+  logTime: {
+    color: tactical.zinc[500],
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  logMsg: {
+    color: tactical.zinc[400],
+    fontSize: 13,
+  },
 });

@@ -37,7 +37,9 @@ function toAprsCoord(value: number, isLat: boolean): string {
 export function buildPositionPacket(
   callsign: string,
   ssid: number,
-  position: AprsPosition
+  position: AprsPosition,
+  batteryPct?: number | null,
+  bioString?: string
 ): string {
   const src = ssid > 0 ? `${callsign}-${ssid}` : callsign;
   const lat = toAprsCoord(position.latitude, true);
@@ -50,11 +52,37 @@ export function buildPositionPacket(
     const altFeet = Math.round(position.altitude * 3.28084);
     body += `/A=${altFeet.toString().padStart(6, '0')}`;
   }
-  if (position.comment) {
-    body += ` ${position.comment}`;
+  const commentParts: string[] = [];
+  if (position.comment?.trim()) commentParts.push(position.comment.trim());
+  if (batteryPct != null) commentParts.push(`[BATT: ${batteryPct}%]`);
+  if (bioString?.trim()) commentParts.push(bioString.trim());
+  const comment = commentParts.join(' ');
+  if (comment) {
+    body += ` ${comment}`;
   }
 
   return `${src}>APRS,WIDE1-1:${body}`;
+}
+
+/**
+ * Builds APRS status packet (text-only, no position).
+ * Format: CALLSIGN-SSID>APRS,WIDE1-1:>message
+ * Appends bio string [HR:72 SpO2:98%] when provided.
+ */
+export function buildStatusPacket(
+  callsign: string,
+  ssid: number,
+  message: string,
+  batteryPct?: number | null,
+  bioString?: string
+): string {
+  const src = ssid > 0 ? `${callsign}-${ssid}` : callsign;
+  const parts: string[] = [];
+  if (message.trim()) parts.push(message.trim());
+  if (batteryPct != null) parts.push(`[BATT: ${batteryPct}%]`);
+  if (bioString?.trim()) parts.push(bioString.trim());
+  const text = parts.join(' ');
+  return `${src}>APRS,WIDE1-1:>${text}`;
 }
 
 /**
