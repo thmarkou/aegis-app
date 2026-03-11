@@ -61,6 +61,8 @@ export function KitListScreen() {
       <FlatList
         data={kits}
         keyExtractor={(item) => item.id}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={tacticalStyles.card}
@@ -85,3 +87,7 @@ export function KitListScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  listContent: { paddingTop: 16, paddingBottom: 24 },
+});

@@ -178,6 +178,7 @@ export async function playAFSKPacket(packetString: string): Promise<void> {
   const uri = await writeWavToFile(wavBuffer);
 
   const { sound } = await Audio.Sound.createAsync({ uri });
+  await sound.setVolumeAsync(1.0);
   await sound.playAsync();
   await new Promise<void>((resolve) => {
     sound.setOnPlaybackStatusUpdate((status) => {

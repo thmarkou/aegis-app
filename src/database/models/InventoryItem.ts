@@ -19,6 +19,8 @@ export default class InventoryItem extends Model {
   @field('quantity') quantity!: number;
   @field('is_essential') isEssential!: boolean;
   @field('notes') notes!: string | null;
+  @field('latitude') latitude!: number | null;
+  @field('longitude') longitude!: number | null;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 

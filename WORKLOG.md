@@ -135,9 +135,22 @@
 
 ---
 
-## 2026-03-06 (Παρασκευή) – UI Layout & Health Integration
+## 2026-03-06 (Παρασκευή) – UI Layout & Ολοκλήρωση Dashboard
 
-### Health Integration Expansion (Apple HealthKit / Garmin Fenix 8)
+### Κατάσταση
+- Dashboard ήταν **υπό κατασκευή** – σήμερα ολοκληρώθηκε
+
+### Dashboard Infrastructure
+- **useDashboardData**: readiness score (mission checks + expiry), total weight, battery, exp alerts, next waypoint, location, altitude, steps, dist walked, weather
+- **weatherService**: Open-Meteo API (temp, wind) – online only
+- **Readiness Gauge**: οπτικό score 0–100%, compromised < 70%
+- **Telemetry cards**: PKG_WT, BATT_STAT, EXP_ALERTS, NEXT_WP, ALT, DIST_WALKED
+- **ENV section**: temp °C, wind km/h
+- **BatteryTelemetry** component, **useBatteryTelemetry** (Power Save Mode < 20%)
+- **SettingsStack**: Settings navigation
+- **Link Garmin Device** toggle στο Settings
+
+### Health Integration Expansion (Apple HealthKit / Garmin Fenix 8) – ολοκλήρωση σήμερα
 - **GarminSyncService**: νέα permissions – OxygenSaturation, RestingHeartRate, ActiveEnergyBurned
 - Polling κάθε 20s: SpO2 (αίμα οξυγόνου %), RHR (ηρεμιστικός σφυγμός), Active Energy (kcal σήμερα)
 - **useGarminStore**: νέα state – spo2, restingHeartRate, activeEnergyKcal
@@ -150,6 +163,22 @@
 - **APRS**: append bio string [HR:72 SpO2:98%] σε Status/SOS packets (buildStatusPacket, buildPositionPacket)
 - **Reliability**: -- για missing metrics (χωρίς crash)
 - **withHealthKit.js**: ενημερωμένο NSHealthShareUsageDescription
+
+### Item Templates
+- **item_templates** table (schema v6): name, category, weight_grams, expiry_date
+- **ItemTemplate** model
+- **TemplateListScreen**: λίστα templates, Add (FAB), Edit, Delete
+- **TemplateFormScreen**: name, category, weight_grams
+- **TemplatePicker** component: επιλογή template κατά το Add item
+- **seedDefaultItemTemplates**: default templates (Quansheng UV-K5, MRE, Water Bottle, First Aid Kit)
+- **App.tsx**: `seedDefaultItemTemplates()` στο init
+
+### Message Log & Mission Prep
+- **message_logs** table: message, sent_at – καταγραφή APRS messages
+- **MessageLog** model
+- **CommsScreen**: log sent messages στο DB
+- **MissionPrepScreen**: pre-flight checklist (Radios Charged, Antenna Tuned, Cables Connected, Offline Maps Verified, Emergency Rations)
+- **secureSettings**: getMissionCheck, setMissionCheck – τα checks τροφοδοτούν το Readiness Score στο Dashboard
 
 ### ItemFormScreen
 - **headerLargeTitle: false** – σταθερό header, πλήρης ορατότητα πεδίων (Name, Category κλπ.)

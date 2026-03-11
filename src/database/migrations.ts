@@ -20,5 +20,51 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 3,
+      steps: [
+        addColumns({
+          table: 'inventory_items',
+          columns: [
+            { name: 'latitude', type: 'number', isOptional: true },
+            { name: 'longitude', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 4,
+      steps: [
+        createTable({
+          name: 'item_templates',
+          columns: [
+            { name: 'name', type: 'string', isIndexed: true },
+            { name: 'category', type: 'string', isIndexed: true },
+            { name: 'weight_grams', type: 'number' },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 5,
+      steps: [
+        addColumns({
+          table: 'item_templates',
+          columns: [{ name: 'expiry_date', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 6,
+      steps: [
+        createTable({
+          name: 'message_logs',
+          columns: [
+            { name: 'message', type: 'string' },
+            { name: 'sent_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
   ],
 });

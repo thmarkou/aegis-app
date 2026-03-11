@@ -8,6 +8,14 @@ const KEYS = {
   weightPercent: 'aegis_weight_percent',
   callsign: 'aegis_callsign',
   ssid: 'aegis_ssid',
+  sortByExpiry: 'aegis_sort_by_expiry',
+  powerSaveMode: 'aegis_power_save_mode',
+  missionCheck_radiosCharged: 'aegis_mission_radios',
+  missionCheck_antennaTuned: 'aegis_mission_antenna',
+  missionCheck_cablesConnected: 'aegis_mission_cables',
+  missionCheck_offlineMapsVerified: 'aegis_mission_maps',
+  missionCheck_emergencyRations: 'aegis_mission_rations',
+  garminLinked: 'aegis_garmin_linked',
 } as const;
 
 const DEFAULTS = {
@@ -18,6 +26,7 @@ const DEFAULTS = {
   weightPercent: '20',
   callsign: 'SY2EYH',
   ssid: '7',
+  sortByExpiry: 'false',
 };
 
 export async function getAdminPin(): Promise<string> {
@@ -79,4 +88,48 @@ export async function getSsid(): Promise<number> {
 export async function setSsid(ssid: number): Promise<void> {
   const n = Math.max(0, Math.min(15, Math.floor(ssid)));
   await SecureStore.setItemAsync(KEYS.ssid, String(n));
+}
+
+export async function getSortByExpiry(): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(KEYS.sortByExpiry);
+  return v === 'true';
+}
+
+export async function setSortByExpiry(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.sortByExpiry, enabled ? 'true' : 'false');
+}
+
+export async function getPowerSaveMode(): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(KEYS.powerSaveMode);
+  return v === 'true';
+}
+
+export async function setPowerSaveMode(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.powerSaveMode, enabled ? 'true' : 'false');
+}
+
+export async function getMissionCheck(key: string): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(key);
+  return v === 'true';
+}
+
+export async function setMissionCheck(key: string, checked: boolean): Promise<void> {
+  await SecureStore.setItemAsync(key, checked ? 'true' : 'false');
+}
+
+export const GPS_UPDATE_INTERVAL_NORMAL_MS = 5000;
+export const GPS_UPDATE_INTERVAL_POWER_SAVE_MS = 30000;
+
+export async function getGarminLinked(): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(KEYS.garminLinked);
+  return v === 'true';
+}
+
+export async function setGarminLinked(linked: boolean): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.garminLinked, linked ? 'true' : 'false');
+}
+
+export async function getGpsUpdateIntervalMs(): Promise<number> {
+  const powerSave = await getPowerSaveMode();
+  return powerSave ? GPS_UPDATE_INTERVAL_POWER_SAVE_MS : GPS_UPDATE_INTERVAL_NORMAL_MS;
 }

@@ -9,6 +9,8 @@ import InventoryItem from './models/InventoryItem';
 import Profile from './models/Profile';
 import Radio from './models/Radio';
 import Repeater from './models/Repeater';
+import ItemTemplate from './models/ItemTemplate';
+import MessageLog from './models/MessageLog';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -21,5 +23,5 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [Kit, InventoryItem, Profile, Radio, Repeater],
+  modelClasses: [Kit, InventoryItem, Profile, Radio, Repeater, ItemTemplate, MessageLog],
 });

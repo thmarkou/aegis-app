@@ -5,7 +5,7 @@ import { DashboardScreen } from '../../features/dashboard/screens/DashboardScree
 import { InventoryStack } from './InventoryStack';
 import { MapScreen } from '../../features/map/screens/MapScreen';
 import { CommsScreen } from '../../features/comms/screens/CommsScreen';
-import { SettingsScreen } from '../../features/crisis/screens/SettingsScreen';
+import { SettingsStack } from './SettingsStack';
 
 const Tab = createBottomTabNavigator();
 
@@ -36,8 +36,12 @@ export function TabNavigator() {
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Inventory" component={InventoryStack} options={{ headerShown: false }} />
       <Tab.Screen name="Map" component={MapScreen} />
-      <Tab.Screen name="Comms" component={CommsScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen
+        name="Comms"
+        component={CommsScreen}
+        options={{ title: 'COMMS', tabBarLabel: 'COMMS' }}
+      />
+      <Tab.Screen name="Settings" component={SettingsStack} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }

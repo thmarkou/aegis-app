@@ -1,11 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StyleSheet, Switch } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { SettingsStackParamList } from '../../../shared/navigation/SettingsStack';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../../../shared/store/useAppStore';
 import * as SecureSettings from '../../../shared/services/secureSettings';
+import {
+    setGarminLinked,
+    connectGarminDevice,
+  } from '../../../shared/services/GarminSyncService';
+import { useGarminStore } from '../../../shared/store/useGarminStore';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
+import { getCacheSizeBytes, clearCache } from '../../map/services/TileCacheService';
+
+type Nav = NativeStackNavigationProp<SettingsStackParamList>;
 
 export function SettingsScreen() {
+  const navigation = useNavigation<Nav>();
   const isAdmin = useAppStore((s) => s.authRole === 'admin');
   const logout = useAppStore((s) => s.logout);
   const [expiryDays, setExpiryDays] = useState('14');
@@ -13,6 +25,18 @@ export function SettingsScreen() {
   const [callsign, setCallsign] = useState('SY2EYH');
   const [ssid, setSsid] = useState('7');
   const [newPin, setNewPin] = useState('');
+  const [cacheSizeMb, setCacheSizeMb] = useState<string>('—');
+  const [sortByExpiry, setSortByExpiry] = useState(false);
+  const garminConnected = useGarminStore((s) => s.connected);
+  const [garminLoading, setGarminLoading] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      getCacheSizeBytes().then((bytes) => {
+        setCacheSizeMb((bytes / (1024 * 1024)).toFixed(1));
+      });
+    }, [])
+  );
 
   useEffect(() => {
     Promise.all([
@@ -20,11 +44,13 @@ export function SettingsScreen() {
       SecureSettings.getWeightPercent(),
       SecureSettings.getCallsign(),
       SecureSettings.getSsid(),
-    ]).then(([d, p, c, s]) => {
+      SecureSettings.getSortByExpiry(),
+    ]).then(([d, p, c, s, sort]) => {
       setExpiryDays(String(d));
       setWeightPercent(String(p));
       setCallsign(c);
       setSsid(String(s));
+      setSortByExpiry(sort);
     });
   }, []);
 
@@ -56,6 +82,21 @@ export function SettingsScreen() {
     Alert.alert('Done', 'Admin PIN updated');
   };
 
+  const handleClearCache = async () => {
+    Alert.alert('Clear Map Cache', 'Remove all offline map tiles?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          await clearCache();
+          setCacheSizeMb('0');
+          Alert.alert('Done', 'Map cache cleared');
+        },
+      },
+    ]);
+  };
+
   const handleLogout = () => {
     Alert.alert('Logout', 'Return to login screen?', [
       { text: 'Cancel', style: 'cancel' },
@@ -65,6 +106,35 @@ export function SettingsScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <Text style={tacticalStyles.sectionTitle}>Inventory Templates</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        Manage item templates. Use them when adding items to quickly fill name, category, and weight.
+      </Text>
+      <TouchableOpacity
+        style={[tacticalStyles.btnSecondary, { flexDirection: 'row', alignItems: 'center' }]}
+        onPress={() => navigation.navigate('TemplateList')}
+      >
+        <Ionicons name="layers-outline" size={18} color="#FFBF00" />
+        <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>Manage Templates</Text>
+      </TouchableOpacity>
+
+      <Text style={tacticalStyles.sectionTitle}>Sort by Expiry</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        In kit detail, sort items by expiry date (soonest first).
+      </Text>
+      <View style={[tacticalStyles.rowInline, { justifyContent: 'space-between' }]}>
+        <Text style={tacticalStyles.label}>Sort by Expiry</Text>
+        <Switch
+          value={sortByExpiry}
+          onValueChange={async (v) => {
+            setSortByExpiry(v);
+            await SecureSettings.setSortByExpiry(v);
+          }}
+          trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
+          thumbColor={sortByExpiry ? tactical.black : tactical.zinc[400]}
+        />
+      </View>
+
       <Text style={tacticalStyles.sectionTitle}>Expiry notifications</Text>
       <Text style={tacticalStyles.sectionDesc}>Notify this many days before item expiry.</Text>
       <View style={tacticalStyles.rowInline}>
@@ -108,6 +178,50 @@ export function SettingsScreen() {
         />
         <Text style={{ color: tactical.zinc[500], fontSize: 14 }}>(0–15)</Text>
       </View>
+
+      <Text style={tacticalStyles.sectionTitle}>Link Garmin Device</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        Read heart rate from Apple Health (Garmin Fenix syncs via Garmin Connect). Grants Health access on toggle.
+      </Text>
+      <View style={[tacticalStyles.rowInline, { justifyContent: 'space-between' }]}>
+        <Text style={tacticalStyles.label}>
+          {garminLoading ? 'Requesting access...' : 'Link Garmin Device'}
+        </Text>
+        <Switch
+          value={garminConnected}
+          disabled={garminLoading}
+          onValueChange={async (v) => {
+            if (v) {
+              setGarminLoading(true);
+              const ok = await connectGarminDevice();
+              setGarminLoading(false);
+              if (!ok) {
+                await setGarminLinked(false);
+                const err = useGarminStore.getState().error;
+                if (err === 'HEALTH_ACCESS_DENIED') {
+                  Alert.alert('HEALTH_ACCESS_DENIED', 'Grant Health access in Settings → Health → Data Access.');
+                }
+              }
+            } else {
+              await setGarminLinked(false);
+            }
+          }}
+          trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
+          thumbColor={garminConnected ? tactical.black : tactical.zinc[400]}
+        />
+      </View>
+
+      <Text style={tacticalStyles.sectionTitle}>Map cache</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        Offline tiles: {cacheSizeMb} MB / 500 MB max
+      </Text>
+      <TouchableOpacity
+        style={[tacticalStyles.btnSecondary, { flexDirection: 'row', alignItems: 'center' }]}
+        onPress={handleClearCache}
+      >
+        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+        <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>Clear cache</Text>
+      </TouchableOpacity>
 
       <Text style={tacticalStyles.sectionTitle}>Weight warning</Text>
       <Text style={tacticalStyles.sectionDesc}>Warn when kit weight exceeds this % of body weight.</Text>

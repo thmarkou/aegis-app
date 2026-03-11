@@ -49,6 +49,8 @@ PODS:
     - Yoga
   - ExpoSecureStore (14.0.1):
     - ExpoModulesCore
+  - ExpoSensors (14.0.2):
+    - ExpoModulesCore
   - ExpoSplashScreen (0.29.24):
     - ExpoModulesCore
   - FBLazyVector (0.76.5)
@@ -1267,6 +1269,8 @@ PODS:
     - React-Core
   - react-native-maps (1.20.1):
     - React-Core
+  - react-native-netinfo (12.0.1):
+    - React-Core
   - react-native-safe-area-context (4.12.0):
     - React-Core
   - React-nativeconfig (0.76.5)
@@ -1519,7 +1523,11 @@ PODS:
     - React-logger (= 0.76.5)
     - React-perflogger (= 0.76.5)
     - React-utils (= 0.76.5)
+  - RNAppleHealthKit (1.7.0):
+    - React
   - RNCAsyncStorage (1.23.1):
+    - React-Core
+  - RNDateTimePicker (8.6.0):
     - React-Core
   - RNReanimated (3.16.7):
     - DoubleConversion
@@ -1630,6 +1638,8 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
+  - RNSVG (15.8.0):
+    - React-Core
   - simdjson (3.1.0-wmelon1)
   - SocketRocket (0.7.1)
   - WatermelonDB (0.27.1):
@@ -1653,6 +1663,7 @@ DEPENDENCIES:
   - ExpoLocation (from `../node_modules/expo-location/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSensors (from `../node_modules/expo-sensors/ios`)
   - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - fmt (from `../node_modules/react-native/third-party-podspecs/fmt.podspec`)
@@ -1690,6 +1701,7 @@ DEPENDENCIES:
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - react-native-get-random-values (from `../node_modules/react-native-get-random-values`)
   - react-native-maps (from `../node_modules/react-native-maps`)
+  - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - React-nativeconfig (from `../node_modules/react-native/ReactCommon`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
@@ -1717,9 +1729,12 @@ DEPENDENCIES:
   - React-utils (from `../node_modules/react-native/ReactCommon/react/utils`)
   - ReactCodegen (from `build/generated/ios`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - RNAppleHealthKit (from `../node_modules/react-native-health`)
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
+  - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
+  - RNSVG (from `../node_modules/react-native-svg`)
   - "simdjson (from `../node_modules/@nozbe/simdjson`)"
   - "WatermelonDB (from `../node_modules/@nozbe/watermelondb`)"
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
@@ -1759,6 +1774,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-modules-core"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
+  ExpoSensors:
+    :path: "../node_modules/expo-sensors/ios"
   ExpoSplashScreen:
     :path: "../node_modules/expo-splash-screen/ios"
   FBLazyVector:
@@ -1829,6 +1846,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-get-random-values"
   react-native-maps:
     :path: "../node_modules/react-native-maps"
+  react-native-netinfo:
+    :path: "../node_modules/@react-native-community/netinfo"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   React-nativeconfig:
@@ -1883,12 +1902,18 @@ EXTERNAL SOURCES:
     :path: build/generated/ios
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNAppleHealthKit:
+    :path: "../node_modules/react-native-health"
   RNCAsyncStorage:
     :path: "../node_modules/@react-native-async-storage/async-storage"
+  RNDateTimePicker:
+    :path: "../node_modules/@react-native-community/datetimepicker"
   RNReanimated:
     :path: "../node_modules/react-native-reanimated"
   RNScreens:
     :path: "../node_modules/react-native-screens"
+  RNSVG:
+    :path: "../node_modules/react-native-svg"
   simdjson:
     :path: "../node_modules/@nozbe/simdjson"
   WatermelonDB:
@@ -1912,6 +1937,7 @@ SPEC CHECKSUMS:
   ExpoLocation: ad29273f84077363296657176ea39c3545521720
   ExpoModulesCore: 89634723241ff070f4046fa8547d2656b9f6257e
   ExpoSecureStore: d006eea5e316283099d46f80a6b10055b89a6008
+  ExpoSensors: 55a2e86242c9b2560d0d25640f79e4b9f5321df6
   ExpoSplashScreen: 1832984021b0795fda9302cf84ac62f0490eeadd
   FBLazyVector: 1bf99bb46c6af9a2712592e707347315f23947aa
   fmt: 10c6e61f4be25dc963c36bd73fc7b1705fe975be
@@ -1947,6 +1973,7 @@ SPEC CHECKSUMS:
   React-microtasksnativemodule: 764a7d5224bb3043ad4af25114a66a23f127ab21
   react-native-get-random-values: 21325b2244dfa6b58878f51f9aa42821e7ba3d06
   react-native-maps: ee1e65647460c3d41e778071be5eda10e3da6225
+  react-native-netinfo: b54effb58887516971e6c273ee0ff0dd853021d3
   react-native-safe-area-context: 142fade490cbebbe428640b8cbdb09daf17e8191
   React-nativeconfig: f7ab6c152e780b99a8c17448f2d99cf5f69a2311
   React-NativeModulesApple: fcaac70c9a12cacc996e29b01c827a8659693ec7
@@ -1974,9 +2001,12 @@ SPEC CHECKSUMS:
   React-utils: f8c32fae2797ee7b5637a0810935b6fc93186631
   ReactCodegen: e3833c9f88f742c293a3aad6bdda17f4e9151bf5
   ReactCommon: 1bba77e08c54aacbd123039cb0931900d5e61ab1
+  RNAppleHealthKit: 60a6beefdd89a75811e9a8873a5e24f351dee681
   RNCAsyncStorage: 826b603ae9c0f88b5ac4e956801f755109fa4d5c
+  RNDateTimePicker: 5144134317b7df26573a2aff37adc18ca3e9b50e
   RNReanimated: be8ab59054b1994a127623ebb6350a7c5cc4d5e8
   RNScreens: 6ba8e720d9c6a969dcf4aa09b9e8688a273635cb
+  RNSVG: 8b1a777d54096b8c2a0fd38fc9d5a454332bbb4d
   simdjson: e6bfae9ce4bcdc80452d388d593816f1ca2106f3
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   WatermelonDB: 842d22ba555425aa9f3ce551239a001200c539bc

@@ -11,6 +11,8 @@ import { TabNavigator } from './src/shared/navigation/TabNavigator';
 import { LoginScreen } from './src/features/auth/screens/LoginScreen';
 import { loadSettingsIntoStore } from './src/shared/store/settingsSync';
 import { scheduleExpiryNotifications } from './src/features/inventory/services/expirationNotifications';
+import { seedDefaultItemTemplates } from './src/database/seedItemTemplates';
+import { initGarminService } from './src/shared/services/GarminSyncService';
 
 function AppContent() {
   const authRole = useAppStore((s) => s.authRole);
@@ -42,7 +44,9 @@ export default function App() {
         await (adapter.initializingPromise ?? Promise.resolve());
         if (cancelled) return;
         await loadSettingsIntoStore();
+        await seedDefaultItemTemplates();
         scheduleExpiryNotifications().catch((e) => console.warn('[AEGIS] Expiry notifications:', e));
+        initGarminService().catch((e) => console.warn('[AEGIS] Garmin BLE init:', e));
       } catch (err) {
         console.error('[AEGIS] DB init failed:', err);
       } finally {

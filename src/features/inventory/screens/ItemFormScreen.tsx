@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Switch } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Switch, ActivityIndicator, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { database } from '../../../database';
 import type InventoryItem from '../../../database/models/InventoryItem';
 import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
+import { TemplatePicker, type TemplatePickResult } from '../components/TemplatePicker';
 
-const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio'];
+const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio', 'Vehicle', 'Base Camp'];
 
 export function ItemFormScreen() {
   const route = useRoute<RouteProp<InventoryStackParamList, 'ItemForm'>>();
@@ -22,6 +26,11 @@ export function ItemFormScreen() {
   const [calories, setCalories] = useState('');
   const [isEssential, setIsEssential] = useState(false);
   const [notes, setNotes] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [taggingLocation, setTaggingLocation] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (!itemId) return;
@@ -35,8 +44,58 @@ export function ItemFormScreen() {
       setCalories(item.calories != null ? String(item.calories) : '');
       setIsEssential(item.isEssential);
       setNotes(item.notes ?? '');
+      setLatitude(item.latitude ?? null);
+      setLongitude(item.longitude ?? null);
     });
   }, [itemId]);
+
+  const hasLocation = latitude != null && longitude != null;
+
+  const handleTemplateSelect = (r: TemplatePickResult) => {
+    setName(r.name);
+    setCategory(r.category);
+    setWeightGrams(String(r.weightGrams));
+  };
+
+  const handleTagLocation = async () => {
+    if (!itemId) {
+      Alert.alert('Save First', 'Save the item before tagging location.');
+      return;
+    }
+    setTaggingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission', 'Location permission required.');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const lat = loc.coords.latitude;
+      const lon = loc.coords.longitude;
+      await database.write(async () => {
+        const item = await database.get<InventoryItem>('inventory_items').find(itemId);
+        await item.update((r) => {
+          r.latitude = lat;
+          r.longitude = lon;
+          r.updatedAt = new Date();
+        });
+      });
+      setLatitude(lat);
+      setLongitude(lon);
+      Alert.alert('Tagged', 'Current location saved.');
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to get location');
+    } finally {
+      setTaggingLocation(false);
+    }
+  };
+
+  const handleViewOnMap = () => {
+    if (!itemId || !hasLocation) return;
+    (navigation.getParent() as { navigate: (s: string, p?: object) => void })?.navigate('Map', {
+      focusItemId: itemId,
+    });
+  };
 
   const handleSave = async () => {
     const q = parseFloat(quantity) || 1;
@@ -59,6 +118,8 @@ export function ItemFormScreen() {
           r.calories = cal;
           r.isEssential = isEssential;
           r.notes = notes.trim() || null;
+          r.latitude = latitude;
+          r.longitude = longitude;
           r.updatedAt = new Date();
         });
       } else {
@@ -73,6 +134,8 @@ export function ItemFormScreen() {
           r.calories = cal;
           r.isEssential = isEssential;
           r.notes = notes.trim() || null;
+          r.latitude = latitude;
+          r.longitude = longitude;
           r.createdAt = new Date();
           r.updatedAt = new Date();
         });
@@ -82,14 +145,31 @@ export function ItemFormScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+    >
       <Text style={tacticalStyles.label}>Name</Text>
-      <TextInput
-        style={tacticalStyles.input}
-        value={name}
-        onChangeText={setName}
-        placeholder="Item name"
-        placeholderTextColor="#666"
+      <View style={styles.nameRow}>
+        <TextInput
+          style={[tacticalStyles.input, styles.nameInput]}
+          value={name}
+          onChangeText={setName}
+          placeholder="Item name or select template"
+          placeholderTextColor="#666"
+        />
+        <TouchableOpacity
+          style={styles.templateBtn}
+          onPress={() => setPickerVisible(true)}
+        >
+          <Ionicons name="search" size={20} color={tactical.amber} />
+        </TouchableOpacity>
+      </View>
+      <TemplatePicker
+        visible={pickerVisible}
+        onClose={() => setPickerVisible(false)}
+        onSelect={handleTemplateSelect}
       />
       <Text style={tacticalStyles.label}>Category</Text>
       <View style={tacticalStyles.row}>
@@ -113,8 +193,46 @@ export function ItemFormScreen() {
           <TextInput style={tacticalStyles.input} value={unit} onChangeText={setUnit} placeholder="pcs" placeholderTextColor="#666" />
         </View>
       </View>
-      <Text style={tacticalStyles.label}>Expiry (YYYY-MM-DD)</Text>
-      <TextInput style={tacticalStyles.input} value={expiryDate} onChangeText={setExpiryDate} placeholder="2025-12-31" placeholderTextColor="#666" />
+      <Text style={tacticalStyles.label}>Expiry</Text>
+      <View style={styles.expiryRow}>
+        <TouchableOpacity
+          style={[tacticalStyles.input, styles.expiryInput]}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={expiryDate ? styles.expiryText : styles.expiryPlaceholder}>
+            {expiryDate || 'Tap to select date'}
+          </Text>
+        </TouchableOpacity>
+        {expiryDate ? (
+          <TouchableOpacity
+            style={styles.clearExpiryBtn}
+            onPress={() => setExpiryDate('')}
+          >
+            <Text style={styles.clearExpiryText}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {showDatePicker && (
+        <View style={styles.datePickerWrap}>
+          <DateTimePicker
+            value={expiryDate ? new Date(expiryDate) : new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(_, date) => {
+              if (Platform.OS === 'android') setShowDatePicker(false);
+              if (date) setExpiryDate(date.toISOString().slice(0, 10));
+            }}
+          />
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[tacticalStyles.btnPrimary, styles.datePickerDone]}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={tacticalStyles.btnPrimaryText}>Done</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
       <Text style={tacticalStyles.label}>Weight (g)</Text>
       <TextInput style={tacticalStyles.input} value={weightGrams} onChangeText={setWeightGrams} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#666" />
       <Text style={tacticalStyles.label}>Calories</Text>
@@ -127,6 +245,29 @@ export function ItemFormScreen() {
           trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
           thumbColor={isEssential ? tactical.black : tactical.zinc[400]}
         />
+      </View>
+      <View style={styles.locationRow}>
+        <TouchableOpacity
+          style={[tacticalStyles.btnPrimary, styles.tagBtn]}
+          onPress={handleTagLocation}
+          disabled={!itemId || taggingLocation}
+        >
+          {taggingLocation ? (
+            <ActivityIndicator size="small" color={tactical.black} />
+          ) : (
+            <Ionicons name="location" size={20} color={tactical.black} />
+          )}
+          <Text style={[tacticalStyles.btnPrimaryText, { marginLeft: 8 }]}>Tag Current Location</Text>
+        </TouchableOpacity>
+        {hasLocation && (
+          <TouchableOpacity
+            style={[tacticalStyles.btnSecondary, styles.viewMapBtn]}
+            onPress={handleViewOnMap}
+          >
+            <Ionicons name="map-outline" size={20} color="#ffffff" />
+            <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>View on Map</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <Text style={tacticalStyles.label}>Notes</Text>
       <TextInput
@@ -147,6 +288,34 @@ export function ItemFormScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: tactical.black },
   content: { padding: 16, paddingBottom: 32 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  nameInput: { flex: 1, marginBottom: 0 },
+  templateBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: tactical.zinc[900],
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expiryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  expiryInput: { flex: 1, marginBottom: 0, justifyContent: 'center' },
+  expiryText: { color: '#ffffff', fontSize: 16 },
+  expiryPlaceholder: { color: '#666', fontSize: 16 },
+  clearExpiryBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: tactical.zinc[700],
+  },
+  clearExpiryText: { color: tactical.zinc[400], fontSize: 14 },
+  datePickerWrap: { marginBottom: 16 },
+  datePickerDone: { marginTop: 12 },
+  locationRow: { flexDirection: 'column', gap: 12, marginBottom: 16 },
+  tagBtn: { flexDirection: 'row', alignItems: 'center' },
+  viewMapBtn: { flexDirection: 'row', alignItems: 'center' },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',

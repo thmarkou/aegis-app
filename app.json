@@ -17,10 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.aegis.survival",
-      "disableNotifications": true,
-      "entitlements": {
-        "aps-environment": null
-      }
+      "disableNotifications": true
     },
     "android": {
       "adaptiveIcon": {
@@ -46,12 +43,12 @@
         }
       ],
       [
-        "expo-notifications",
+        "expo-sensors",
         {
-          "icon": "./assets/images/icons/notification-icon.png",
-          "color": "#22c55e"
+          "motionPermission": "AEGIS uses step count for DIST_WALKED telemetry on the tactical dashboard."
         }
       ],
+      "./plugins/withHealthKit.js",
       "./plugins/withWatermelonDBSimdjson.js",
       "./plugins/withoutPushForPersonalTeam.js"
     ]
