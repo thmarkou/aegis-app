@@ -230,6 +230,34 @@
 
 ---
 
+## 2026-03-12 (Πέμπτη) – Emergency System & Audio Calibration Suite
+
+### Emergency System – Ολοκλήρωση
+- **EmergencyStationMarker**: μεγάλο κόκκινο διαμάντι (40×40), radar-style pulsing halo (radius 80), bold amber label σε μαύρο background
+- **zIndex 999999** για emergency markers – πάνω από όλα τα labels
+- **CANCEL EMERGENCY** κουμπί στο Dashboard – εμφανίζεται μόνο όταν `isGlobalEmergency` true
+- **cancelEmergencyBroadcast**: set `isGlobalEmergency=false` αμέσως, wipe emergency stations από DB, στέλνει ALL CLEAR packet
+- **useAppStore**: `isGlobalEmergency`, `mapRefreshTrigger`, `setGlobalEmergency`, `triggerMapRefresh`
+- **MissionPrepScreen**: όταν TEST_MODE off → `cancelEmergencyBroadcast()` για reset
+- **State reset fix**: Emergency → Cancel → Emergency → Cancel λειτουργεί κάθε φορά
+  - `sendEmergencyBroadcast`: `setGlobalEmergency(true)` στην αρχή
+  - Radar condition: `(isEmergency || isGlobalEmergency)` – virtual marker όταν DB δεν έχει ενημερωθεί ακόμα
+  - Cancel button: `useAppStore(isGlobalEmergency)` για άμεση ενημέρωση UI
+
+### Audio Calibration Suite – Προετοιμασία για Quansheng/iPhone
+- **TX Delay (Preamble)**: slider 100–1000ms στο Settings → Audio Calibration
+- **Digital Gain**: slider 0.5–1.5 (output volume multiplier)
+- **SecureStore**: `txDelayMs`, `digitalGain` – persistent settings
+- **AudioEngine**: 1200Hz pre-carrier tone πριν το AFSK data (VOX opener), configurable amplitude
+- **BeaconService**: παίζει AFSK audio μέσω phone output με txDelay και gain, route packet στο DB
+- **WaveformMonitor**: oscilloscope-style visualizer που ενεργοποιείται όταν πατηθεί SEND BEACON
+- **@react-native-community/slider**: dependency για sliders
+
+### Git
+- Commit & push στο GitHub
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { DashboardScreen } from '../../features/dashboard/screens/DashboardScreen';
-import { InventoryStack } from './InventoryStack';
+import { MissionStack } from './MissionStack';
 import { MapScreen } from '../../features/map/screens/MapScreen';
 import { CommsScreen } from '../../features/comms/screens/CommsScreen';
 import { SettingsStack } from './SettingsStack';
@@ -11,7 +11,7 @@ const Tab = createBottomTabNavigator();
 
 const TAB_ICONS: Record<string, { active: string; inactive: string }> = {
   Dashboard: { active: 'speedometer', inactive: 'speedometer-outline' },
-  Inventory: { active: 'layers', inactive: 'layers-outline' },
+  Mission: { active: 'checkbox', inactive: 'checkbox-outline' },
   Map: { active: 'map', inactive: 'map-outline' },
   Comms: { active: 'radio', inactive: 'radio-outline' },
   Settings: { active: 'settings', inactive: 'settings-outline' },
@@ -23,7 +23,12 @@ export function TabNavigator() {
       screenOptions={({ route }) => ({
         headerStyle: { backgroundColor: '#000000' },
         headerTintColor: '#FFBF00',
-        tabBarStyle: { backgroundColor: '#000000', borderTopColor: '#1a1a1a' },
+        tabBarStyle: {
+          backgroundColor: '#000000',
+          borderTopColor: '#1a1a1a',
+          zIndex: 9999,
+          elevation: 9999,
+        },
         tabBarActiveTintColor: '#FFBF00',
         tabBarInactiveTintColor: '#666666',
         tabBarIcon: ({ focused, color, size }) => {
@@ -34,12 +39,19 @@ export function TabNavigator() {
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Inventory" component={InventoryStack} options={{ headerShown: false }} />
+      <Tab.Screen
+        name="Mission"
+        component={MissionStack}
+        options={{ headerShown: false, tabBarLabel: 'MISSION' }}
+      />
       <Tab.Screen name="Map" component={MapScreen} />
       <Tab.Screen
         name="Comms"
         component={CommsScreen}
-        options={{ title: 'COMMS', tabBarLabel: 'COMMS' }}
+        options={{
+          headerShown: false,
+          tabBarLabel: 'COMMS',
+        }}
       />
       <Tab.Screen name="Settings" component={SettingsStack} options={{ headerShown: false }} />
     </Tab.Navigator>

@@ -8,8 +8,9 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useRoute, useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, UrlTile, LocalTile } from 'react-native-maps';
+import { EmergencyStationMarker } from '../components/EmergencyStationMarker';
+import { useRoute, useFocusEffect, useNavigation } from '@react-navigation/native';
+import MapView, { Marker, Callout, UrlTile, LocalTile } from 'react-native-maps';
 import * as Location from 'expo-location';
 import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,10 +24,12 @@ import {
   deltaToRadiusKm,
 } from '../services/TileCacheService';
 import { database } from '../../../database';
+import type IncomingStation from '../../../database/models/IncomingStation';
 import { Q } from '@nozbe/watermelondb';
 import { getCategoryIcon } from '../utils/categoryIcons';
 import { useBatteryTelemetry } from '../../../shared/hooks/useBatteryTelemetry';
 import { BatteryTelemetry } from '../../../shared/components/BatteryTelemetry';
+import { useAppStore } from '../../../shared/store/useAppStore';
 
 function haversineKm(
   lat1: number,
@@ -72,17 +75,51 @@ export function MapScreen() {
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [callsignLabel, setCallsignLabel] = useState('SY2EYH-7');
+  const [ourIdentity, setOurIdentity] = useState<{ callsign: string; ssid: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [repeaters, setRepeaters] = useState<{ id: string; name: string; lat: number; lon: number }[]>([]);
+  const [incomingStations, setIncomingStations] = useState<
+    { id: string; callsign: string; ssid: number; lat: number; lon: number; lastSeenAt: number; comment: string | null }[]
+  >([]);
+  const stationMarkerRefs = useRef<Record<string, React.Component | null>>({});
+  const prevStationCountRef = useRef(0);
   const [inventoryWaypoints, setInventoryWaypoints] = useState<
     { id: string; name: string; category: string; lat: number; lon: number }[]
   >([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const autoCacheRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const route = useRoute<{ params?: { focusItemId?: string } }>();
+  const route = useRoute<{
+    params?: { focusItemId?: string; focusOnNewStation?: boolean; centerOnUser?: boolean };
+  }>();
+  const navigation = useNavigation();
   const { pct: batteryPct, battColor, powerSaveMode } = useBatteryTelemetry();
+  const isGlobalEmergency = useAppStore((s) => s.isGlobalEmergency);
+  const mapRefreshTrigger = useAppStore((s) => s.mapRefreshTrigger);
+
+  const centerOnNewestStation = useCallback(
+    (openCallout = true) => {
+      if (incomingStations.length === 0 || !mapRef.current) return;
+      const newest = incomingStations[0];
+      const region = {
+        latitude: newest.lat,
+        longitude: newest.lon,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      };
+      mapRef.current.animateToRegion(region, 500);
+      if (openCallout) {
+        setTimeout(() => {
+          const ref = stationMarkerRefs.current[newest.id];
+          if (ref && typeof (ref as { showCallout?: () => void }).showCallout === 'function') {
+            (ref as { showCallout: () => void }).showCallout();
+          }
+        }, 600);
+      }
+    },
+    [incomingStations]
+  );
 
   const loadCallsign = useCallback(async () => {
     const [callsign, ssid] = await Promise.all([
@@ -90,6 +127,7 @@ export function MapScreen() {
       SecureSettings.getSsid(),
     ]);
     setCallsignLabel(`${callsign}-${ssid}`);
+    setOurIdentity({ callsign, ssid });
   }, []);
 
   const requestLocation = useCallback(async () => {
@@ -153,6 +191,62 @@ export function MapScreen() {
     loadRepeaters();
   }, []);
 
+  const loadIncomingStations = useCallback(async () => {
+    const rows = await database.get<IncomingStation>('incoming_stations').query().fetch();
+    const stations = rows
+      .map((r) => ({
+        id: r.id,
+        callsign: r.callsign,
+        ssid: r.ssid,
+        lat: r.latitude,
+        lon: r.longitude,
+        lastSeenAt: r.lastSeenAt,
+        comment: r.comment,
+      }))
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    setIncomingStations(stations);
+  }, []);
+
+  // Reactive: map updates when incoming_stations DB changes (e.g. after Loopback Test)
+  useEffect(() => {
+    const collection = database.get<IncomingStation>('incoming_stations');
+    const subscription = collection.query().observe().subscribe((rows) => {
+      const stations = rows
+        .map((r) => ({
+          id: r.id,
+          callsign: r.callsign,
+          ssid: r.ssid,
+          lat: r.latitude,
+          lon: r.longitude,
+          lastSeenAt: r.lastSeenAt,
+          comment: r.comment,
+        }))
+        .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+      setIncomingStations(stations);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    loadIncomingStations();
+  }, [mapRefreshTrigger, loadIncomingStations]);
+
+  const handleClearAllStations = useCallback(async () => {
+    try {
+      await database.write(async () => {
+        const collection = database.get<IncomingStation>('incoming_stations');
+        const all = await collection.query().fetch();
+        for (const record of all) {
+          await record.destroyPermanently();
+        }
+      });
+      await loadIncomingStations();
+      Alert.alert('Cleared', 'All incoming stations removed. Run Loopback Test in Comms to add Acropolis marker.');
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to clear stations');
+    }
+  }, [loadIncomingStations]);
+
   const loadInventoryWaypoints = useCallback(async () => {
     const rows = await database.get('inventory_items').query().fetch();
     const waypoints = rows
@@ -172,8 +266,37 @@ export function MapScreen() {
     loadInventoryWaypoints();
   }, [loadInventoryWaypoints]);
 
+  // Auto-center when navigating from Comms after Loopback Test (wait for stations + map render)
+  useEffect(() => {
+    if (route.params?.focusOnNewStation && incomingStations.length > 0) {
+      const t = setTimeout(() => {
+        centerOnNewestStation(true);
+        navigation.setParams({ focusOnNewStation: false } as never);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [route.params?.focusOnNewStation, incomingStations.length, centerOnNewestStation, navigation]);
+
+  // Auto-center when new station added while Map is visible (skip initial load 0->N)
+  useEffect(() => {
+    const prev = prevStationCountRef.current;
+    prevStationCountRef.current = incomingStations.length;
+    if (prev > 0 && incomingStations.length > prev) {
+      centerOnNewestStation(true);
+    }
+  }, [incomingStations.length, centerOnNewestStation]);
+
+  // Center on user when navigating from Emergency Broadcast
+  useEffect(() => {
+    if (route.params?.centerOnUser && location && mapRef.current) {
+      recenter();
+      navigation.setParams({ centerOnUser: false } as never);
+    }
+  }, [route.params?.centerOnUser, location, recenter, navigation]);
+
   useFocusEffect(
     useCallback(() => {
+      // Stations load reactively via observe(); only waypoints/focus here
       const focusId = route.params?.focusItemId;
       loadInventoryWaypoints().then((waypoints) => {
         if (focusId) {
@@ -290,8 +413,9 @@ export function MapScreen() {
         initialRegion={region}
         customMapStyle={Platform.OS === 'android' ? tacticalMapStyle : undefined}
         mapType="standard"
-        showsUserLocation={false}
+        showsUserLocation={true}
         showsMyLocationButton={false}
+        followsUserLocation={false}
         onRegionChangeComplete={handleRegionChangeComplete}
       >
         {isOffline ? (
@@ -310,21 +434,7 @@ export function MapScreen() {
             maximumZ={MAX_ZOOM}
           />
         )}
-        {location && (
-          <Marker
-            coordinate={{ latitude: location.lat, longitude: location.lon }}
-            anchor={{ x: 0.5, y: 1 }}
-            tracksViewChanges={false}
-            zIndex={10}
-          >
-            <View style={styles.customMarker}>
-              <View style={styles.markerLabel}>
-                <Text style={styles.markerLabelText}>{callsignLabel}</Text>
-              </View>
-              <View style={styles.markerPin} />
-            </View>
-          </Marker>
-        )}
+        {/* User location = native blue dot (showsUserLocation). Station markers = red pins. */}
         {repeaters.map((r) => (
           <Marker
             key={`r-${r.id}`}
@@ -339,6 +449,64 @@ export function MapScreen() {
             </View>
           </Marker>
         ))}
+        {(() => {
+          const effectiveStations = [...incomingStations];
+          if (
+            isGlobalEmergency &&
+            ourIdentity != null &&
+            location != null &&
+            !effectiveStations.some(
+              (s) => s.callsign === ourIdentity!.callsign && s.ssid === ourIdentity!.ssid
+            )
+          ) {
+            effectiveStations.unshift({
+              id: 'self-emergency',
+              callsign: ourIdentity.callsign,
+              ssid: ourIdentity.ssid,
+              lat: location.lat,
+              lon: location.lon,
+              lastSeenAt: Date.now(),
+              comment: 'EMERGENCY!',
+            });
+          }
+          return effectiveStations.map((s) => {
+            const isEmergency = (s.comment ?? '').toUpperCase().includes('EMERGENCY');
+            const isOwnStation =
+              ourIdentity != null && s.callsign === ourIdentity.callsign && s.ssid === ourIdentity.ssid;
+            const showRadar = isEmergency || (isOwnStation && isGlobalEmergency);
+            const shouldPulse = isOwnStation ? showRadar && isGlobalEmergency : isEmergency;
+            return (
+              <Marker
+                key={`in-${s.id}`}
+                ref={(ref) => {
+                  stationMarkerRefs.current[s.id] = ref;
+                }}
+                coordinate={{ latitude: s.lat, longitude: s.lon }}
+                anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={false}
+                zIndex={showRadar ? 999999 : 5}
+              >
+                {showRadar ? (
+                  <EmergencyStationMarker station={s} shouldPulse={shouldPulse} />
+                ) : (
+                <>
+                  <View style={styles.incomingStationMarker}>
+                    <Text style={styles.incomingStationText}>{s.callsign}-{s.ssid}</Text>
+                    <View style={styles.incomingStationPin} />
+                  </View>
+                  <Callout>
+                    <View style={styles.calloutContent}>
+                      <Text style={styles.calloutTitle}>{s.callsign}-{s.ssid}</Text>
+                      <Text style={styles.calloutCoords}>Lat: {s.lat.toFixed(5)}</Text>
+                      <Text style={styles.calloutCoords}>Lon: {s.lon.toFixed(5)}</Text>
+                    </View>
+                  </Callout>
+                </>
+              )}
+            </Marker>
+            );
+          });
+        })()}
         {inventoryWaypoints.map((w) => {
           const icon = getCategoryIcon(w.category, w.name);
           const isSelected = selectedItemId === w.id;
@@ -406,6 +574,21 @@ export function MapScreen() {
           <Ionicons name="download" size={20} color={tactical.black} />
           <Text style={styles.tacticalBtnText}>Tactical Download</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.clearStationsBtn} onPress={handleClearAllStations}>
+          <Text style={styles.clearStationsText}>[CLEAR_ALL_STATIONS]</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.recenterBtn} onPress={() => loadIncomingStations()}>
+          <Ionicons name="refresh" size={20} color={tactical.black} />
+          <Text style={styles.recenterText}>Refresh Stations</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.recenterBtn, incomingStations.length === 0 && styles.recenterBtnDisabled]}
+          onPress={() => centerOnNewestStation(true)}
+          disabled={incomingStations.length === 0}
+        >
+          <Ionicons name="navigate" size={20} color={tactical.black} />
+          <Text style={styles.recenterText}>Center on Station</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.recenterBtn} onPress={recenter}>
           <Ionicons name="locate" size={24} color={tactical.black} />
           <Text style={styles.recenterText}>Recenter</Text>
@@ -439,6 +622,34 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     backgroundColor: tactical.amber,
+  },
+  incomingStationMarker: { alignItems: 'center' },
+  incomingStationText: {
+    color: '#ef4444',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  incomingStationPin: {
+    width: 12,
+    height: 12,
+    backgroundColor: '#ef4444',
+    borderRadius: 6,
+    transform: [{ translateY: -6 }],
+  },
+  calloutContent: {
+    padding: 8,
+    minWidth: 140,
+  },
+  calloutTitle: {
+    color: tactical.amber,
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  calloutCoords: {
+    color: tactical.zinc[400],
+    fontSize: 12,
   },
   waypointMarker: { alignItems: 'center' },
   waypointText: {
@@ -548,6 +759,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tacticalBtnDisabled: { opacity: 0.5 },
+  recenterBtnDisabled: { opacity: 0.5 },
   tacticalBtnText: { color: tactical.black, fontWeight: '700', fontSize: 14 },
   recenterBtn: {
     flexDirection: 'row',
@@ -559,4 +771,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   recenterText: { color: tactical.black, fontWeight: '700', fontSize: 14 },
+  clearStationsBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  clearStationsText: { color: '#ef4444', fontWeight: '700', fontSize: 12 },
 });

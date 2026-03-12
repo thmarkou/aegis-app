@@ -3,11 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet 
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
-import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
+import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
 export function KitFormScreen() {
-  const route = useRoute<RouteProp<InventoryStackParamList, 'KitForm'>>();
+  const route = useRoute<RouteProp<SharedStackParamList, 'KitForm'>>();
   const { kitId } = route.params;
   const navigation = useNavigation();
 

@@ -45,15 +45,9 @@ export function useDashboardData() {
       if (await SecureSettings.getMissionCheck(key)) missionChecksDone++;
     }
 
-    const allMissionDone = missionChecksDone === MISSION_KEYS.length;
-    let expiredCount = 0;
-    for (const item of items) {
-      if (item.expiryDate && item.expiryDate <= now) expiredCount++;
-    }
-
-    const baseScore = allMissionDone ? 100 : (missionChecksDone / MISSION_KEYS.length) * 100;
-    const score = Math.max(0, Math.min(100, baseScore - expiredCount * 10));
-    setReadinessScore(score);
+    // Readiness = % of Mission Prep checklist items checked (linked to MISSION tab)
+    const missionPct = (missionChecksDone / MISSION_KEYS.length) * 100;
+    setReadinessScore(missionPct);
 
     const totalGrams = items.reduce((sum, i) => sum + i.quantity * i.weightGrams, 0);
     setTotalWeightKg(totalGrams / 1000);

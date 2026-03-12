@@ -48,7 +48,7 @@
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to use Face ID</string>
     <key>NSHealthShareUsageDescription</key>
-    <string>AEGIS reads heart rate, steps, and distance from Apple Health to display on the tactical dashboard.</string>
+    <string>AEGIS reads heart rate, blood oxygen (SpO2), resting heart rate, active energy, steps, and distance from Apple Health for the tactical dashboard and APRS status messages.</string>
     <key>NSHealthUpdateUsageDescription</key>
     <string>AEGIS may save activity data to Apple Health.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

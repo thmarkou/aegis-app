@@ -16,6 +16,9 @@ const KEYS = {
   missionCheck_offlineMapsVerified: 'aegis_mission_maps',
   missionCheck_emergencyRations: 'aegis_mission_rations',
   garminLinked: 'aegis_garmin_linked',
+  testMode: 'aegis_test_mode',
+  txDelayMs: 'aegis_tx_delay_ms',
+  digitalGain: 'aegis_digital_gain',
 } as const;
 
 const DEFAULTS = {
@@ -108,17 +111,36 @@ export async function setPowerSaveMode(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(KEYS.powerSaveMode, enabled ? 'true' : 'false');
 }
 
+const MISSION_CHECK_KEYS: Record<string, string> = {
+  missionCheck_radiosCharged: KEYS.missionCheck_radiosCharged,
+  missionCheck_antennaTuned: KEYS.missionCheck_antennaTuned,
+  missionCheck_cablesConnected: KEYS.missionCheck_cablesConnected,
+  missionCheck_offlineMapsVerified: KEYS.missionCheck_offlineMapsVerified,
+  missionCheck_emergencyRations: KEYS.missionCheck_emergencyRations,
+};
+
 export async function getMissionCheck(key: string): Promise<boolean> {
-  const v = await SecureStore.getItemAsync(key);
+  const storageKey = MISSION_CHECK_KEYS[key] ?? key;
+  const v = await SecureStore.getItemAsync(storageKey);
   return v === 'true';
 }
 
 export async function setMissionCheck(key: string, checked: boolean): Promise<void> {
-  await SecureStore.setItemAsync(key, checked ? 'true' : 'false');
+  const storageKey = MISSION_CHECK_KEYS[key] ?? key;
+  await SecureStore.setItemAsync(storageKey, checked ? 'true' : 'false');
 }
 
 export const GPS_UPDATE_INTERVAL_NORMAL_MS = 5000;
 export const GPS_UPDATE_INTERVAL_POWER_SAVE_MS = 30000;
+
+export async function getTestMode(): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(KEYS.testMode);
+  return v === 'true';
+}
+
+export async function setTestMode(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.testMode, enabled ? 'true' : 'false');
+}
 
 export async function getGarminLinked(): Promise<boolean> {
   const v = await SecureStore.getItemAsync(KEYS.garminLinked);
@@ -127,6 +149,35 @@ export async function getGarminLinked(): Promise<boolean> {
 
 export async function setGarminLinked(linked: boolean): Promise<void> {
   await SecureStore.setItemAsync(KEYS.garminLinked, linked ? 'true' : 'false');
+}
+
+export const TX_DELAY_MIN_MS = 100;
+export const TX_DELAY_MAX_MS = 1000;
+export const TX_DELAY_DEFAULT_MS = 300;
+export const DIGITAL_GAIN_MIN = 0.5;
+export const DIGITAL_GAIN_MAX = 1.5;
+export const DIGITAL_GAIN_DEFAULT = 1.0;
+
+export async function getTxDelayMs(): Promise<number> {
+  const v = await SecureStore.getItemAsync(KEYS.txDelayMs);
+  const n = v ? parseInt(v, 10) : TX_DELAY_DEFAULT_MS;
+  return Math.max(TX_DELAY_MIN_MS, Math.min(TX_DELAY_MAX_MS, isNaN(n) ? TX_DELAY_DEFAULT_MS : n));
+}
+
+export async function setTxDelayMs(ms: number): Promise<void> {
+  const clamped = Math.max(TX_DELAY_MIN_MS, Math.min(TX_DELAY_MAX_MS, Math.round(ms)));
+  await SecureStore.setItemAsync(KEYS.txDelayMs, String(clamped));
+}
+
+export async function getDigitalGain(): Promise<number> {
+  const v = await SecureStore.getItemAsync(KEYS.digitalGain);
+  const n = v ? parseFloat(v) : DIGITAL_GAIN_DEFAULT;
+  return Math.max(DIGITAL_GAIN_MIN, Math.min(DIGITAL_GAIN_MAX, isNaN(n) ? DIGITAL_GAIN_DEFAULT : n));
+}
+
+export async function setDigitalGain(gain: number): Promise<void> {
+  const clamped = Math.max(DIGITAL_GAIN_MIN, Math.min(DIGITAL_GAIN_MAX, Math.round(gain * 100) / 100));
+  await SecureStore.setItemAsync(KEYS.digitalGain, String(clamped));
 }
 
 export async function getGpsUpdateIntervalMs(): Promise<number> {

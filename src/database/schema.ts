@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 6,
+  version: 7,
   tables: [
     tableSchema({
       name: 'kits',
@@ -64,6 +64,18 @@ export default appSchema({
       columns: [
         { name: 'message', type: 'string' },
         { name: 'sent_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'incoming_stations',
+      columns: [
+        { name: 'callsign', type: 'string', isIndexed: true },
+        { name: 'ssid', type: 'number' },
+        { name: 'latitude', type: 'number' },
+        { name: 'longitude', type: 'number' },
+        { name: 'altitude', type: 'number', isOptional: true },
+        { name: 'last_seen_at', type: 'number' },
+        { name: 'comment', type: 'string', isOptional: true },
       ],
     }),
     tableSchema({

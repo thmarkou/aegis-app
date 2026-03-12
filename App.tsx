@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { database } from './src/database';
@@ -13,6 +15,8 @@ import { loadSettingsIntoStore } from './src/shared/store/settingsSync';
 import { scheduleExpiryNotifications } from './src/features/inventory/services/expirationNotifications';
 import { seedDefaultItemTemplates } from './src/database/seedItemTemplates';
 import { initGarminService } from './src/shared/services/GarminSyncService';
+import { GlobalEmergencyOverlay } from './src/shared/components/GlobalEmergencyOverlay';
+import { navigationRef } from './src/shared/navigation/navigationRef';
 
 function AppContent() {
   const authRole = useAppStore((s) => s.authRole);
@@ -20,7 +24,7 @@ function AppContent() {
   if (!authRole) return <LoginScreen />;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <StatusBar style="light" />
       <TabNavigator />
     </NavigationContainer>
@@ -31,10 +35,6 @@ SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +50,10 @@ export default function App() {
       } catch (err) {
         console.error('[AEGIS] DB init failed:', err);
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled) {
+          await SplashScreen.hideAsync().catch(() => {});
+          setReady(true);
+        }
       }
     };
     init();
@@ -60,8 +63,13 @@ export default function App() {
   if (!ready) return <TacticalSplashScreen />;
 
   return (
-    <SafeAreaProvider>
-      <AppContent />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }} pointerEvents="box-none">
+      <View style={{ flex: 1 }} pointerEvents="box-none">
+        <SafeAreaProvider style={{ flex: 1 }} pointerEvents="box-none">
+          <AppContent />
+          <GlobalEmergencyOverlay />
+        </SafeAreaProvider>
+      </View>
+    </GestureHandlerRootView>
   );
 }

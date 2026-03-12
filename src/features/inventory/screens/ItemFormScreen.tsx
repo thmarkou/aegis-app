@@ -6,14 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { database } from '../../../database';
 import type InventoryItem from '../../../database/models/InventoryItem';
-import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
+import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { TemplatePicker, type TemplatePickResult } from '../components/TemplatePicker';
 
 const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio', 'Vehicle', 'Base Camp'];
 
 export function ItemFormScreen() {
-  const route = useRoute<RouteProp<InventoryStackParamList, 'ItemForm'>>();
+  const route = useRoute<RouteProp<SharedStackParamList, 'ItemForm'>>();
   const { kitId, itemId } = route.params;
   const navigation = useNavigation();
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StyleSheet, Switch } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../../../shared/navigation/SettingsStack';
@@ -27,6 +28,8 @@ export function SettingsScreen() {
   const [newPin, setNewPin] = useState('');
   const [cacheSizeMb, setCacheSizeMb] = useState<string>('—');
   const [sortByExpiry, setSortByExpiry] = useState(false);
+  const [txDelayMs, setTxDelayMs] = useState(300);
+  const [digitalGain, setDigitalGain] = useState(1.0);
   const garminConnected = useGarminStore((s) => s.connected);
   const [garminLoading, setGarminLoading] = useState(false);
 
@@ -45,12 +48,16 @@ export function SettingsScreen() {
       SecureSettings.getCallsign(),
       SecureSettings.getSsid(),
       SecureSettings.getSortByExpiry(),
-    ]).then(([d, p, c, s, sort]) => {
+      SecureSettings.getTxDelayMs(),
+      SecureSettings.getDigitalGain(),
+    ]).then(([d, p, c, s, sort, tx, gain]) => {
       setExpiryDays(String(d));
       setWeightPercent(String(p));
       setCallsign(c);
       setSsid(String(s));
       setSortByExpiry(sort);
+      setTxDelayMs(tx);
+      setDigitalGain(gain);
     });
   }, []);
 
@@ -179,6 +186,49 @@ export function SettingsScreen() {
         <Text style={{ color: tactical.zinc[500], fontSize: 14 }}>(0–15)</Text>
       </View>
 
+      <Text style={tacticalStyles.sectionTitle}>Audio Calibration</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        TX preamble and digital gain for Quansheng/iPhone adapter. Saved automatically.
+      </Text>
+      <View style={styles.sliderRow}>
+        <Text style={tacticalStyles.label}>TX Delay (Preamble)</Text>
+        <Text style={styles.sliderValue}>{txDelayMs} ms</Text>
+      </View>
+      <Slider
+        style={styles.slider}
+        minimumValue={SecureSettings.TX_DELAY_MIN_MS}
+        maximumValue={SecureSettings.TX_DELAY_MAX_MS}
+        step={50}
+        value={txDelayMs}
+        onValueChange={(v) => {
+          const rounded = Math.round(v);
+          setTxDelayMs(rounded);
+          SecureSettings.setTxDelayMs(rounded);
+        }}
+        minimumTrackTintColor={tactical.amber}
+        maximumTrackTintColor={tactical.zinc[700]}
+        thumbTintColor={tactical.amber}
+      />
+      <View style={styles.sliderRow}>
+        <Text style={tacticalStyles.label}>Digital Gain</Text>
+        <Text style={styles.sliderValue}>{digitalGain.toFixed(2)}</Text>
+      </View>
+      <Slider
+        style={styles.slider}
+        minimumValue={SecureSettings.DIGITAL_GAIN_MIN}
+        maximumValue={SecureSettings.DIGITAL_GAIN_MAX}
+        step={0.05}
+        value={digitalGain}
+        onValueChange={(v) => {
+          const rounded = Math.round(v * 100) / 100;
+          setDigitalGain(rounded);
+          SecureSettings.setDigitalGain(rounded);
+        }}
+        minimumTrackTintColor={tactical.amber}
+        maximumTrackTintColor={tactical.zinc[700]}
+        thumbTintColor={tactical.amber}
+      />
+
       <Text style={tacticalStyles.sectionTitle}>Link Garmin Device</Text>
       <Text style={tacticalStyles.sectionDesc}>
         Read heart rate from Apple Health (Garmin Fenix syncs via Garmin Connect). Grants Health access on toggle.
@@ -271,4 +321,20 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: tactical.black },
   content: { padding: 24, paddingBottom: 48 },
+  sliderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  sliderValue: {
+    color: tactical.amber,
+    fontSize: 14,
+    fontFamily: 'monospace',
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+    marginBottom: 16,
+  },
 });

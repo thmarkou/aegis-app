@@ -66,5 +66,22 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 7,
+      steps: [
+        createTable({
+          name: 'incoming_stations',
+          columns: [
+            { name: 'callsign', type: 'string', isIndexed: true },
+            { name: 'ssid', type: 'number' },
+            { name: 'latitude', type: 'number' },
+            { name: 'longitude', type: 'number' },
+            { name: 'altitude', type: 'number', isOptional: true },
+            { name: 'last_seen_at', type: 'number' },
+            { name: 'comment', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

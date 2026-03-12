@@ -13,8 +13,8 @@ const BAUD_RATE = 1200;
 const MARK_FREQ = 1200;
 const SPACE_FREQ = 2200;
 const SAMPLES_PER_BIT = Math.round(SAMPLE_RATE / BAUD_RATE);
-const AMPLITUDE = 0.85 * 32767; // 85% to avoid clipping/distortion
-const PTT_DELAY_MS = 500;
+const AMPLITUDE = 0.85 * 32767; // 85% for transmit
+const LOOPBACK_AMPLITUDE = 0.9 * 32767; // 90% for internal loopback – decoder needs strong signal
 const POST_DELAY_MS = 100;
 
 /**
@@ -40,14 +40,15 @@ function stringToBits(str: string): number[] {
 function generateTone(
   freq: number,
   numSamples: number,
-  startPhase: number
+  startPhase: number,
+  amplitude: number = AMPLITUDE
 ): { samples: Int16Array; endPhase: number } {
   const samples = new Int16Array(numSamples);
   const phaseIncrement = (2 * Math.PI * freq) / SAMPLE_RATE;
   let phase = startPhase;
 
   for (let i = 0; i < numSamples; i++) {
-    samples[i] = Math.round(AMPLITUDE * Math.sin(phase));
+    samples[i] = Math.round(amplitude * Math.sin(phase));
     phase += phaseIncrement;
   }
 
@@ -107,13 +108,13 @@ function createWavBuffer(pcmSamples: Int16Array): ArrayBuffer {
 }
 
 /**
- * Generates AFSK 1200 baud WAV from packet string.
- * PTT delay: 500ms silence -> AFSK data -> 100ms silence.
+ * Generates raw PCM (16-bit mono, 44100 Hz) from bit array.
+ * Used for AX.25 loopback – bits are already stuffed and NRZI-encoded.
+ * Uses LOOPBACK_AMPLITUDE (90%) so decoder can reliably detect the signal.
+ * skipPtt: omit preamble for internal loopback – decoder gets data immediately.
  */
-export function generateAFSKWav(packetString: string): ArrayBuffer {
-  const bits = stringToBits(packetString);
-
-  const pttSamples = Math.round((PTT_DELAY_MS / 1000) * SAMPLE_RATE);
+export function generateAFSKPcmFromBits(bits: number[], skipPtt = false, txDelayMs = 500): Int16Array {
+  const pttSamples = skipPtt ? 0 : Math.round((txDelayMs / 1000) * SAMPLE_RATE);
   const postSamples = Math.round((POST_DELAY_MS / 1000) * SAMPLE_RATE);
 
   const totalSamples = pttSamples + bits.length * SAMPLES_PER_BIT + postSamples;
@@ -121,28 +122,94 @@ export function generateAFSKWav(packetString: string): ArrayBuffer {
 
   let offset = 0;
 
-  // PTT delay: 500ms silence
   for (let i = 0; i < pttSamples; i++) {
     pcm[offset++] = 0;
   }
 
-  // AFSK: each bit
   let phase = 0;
   for (const bit of bits) {
     const freq = bit ? MARK_FREQ : SPACE_FREQ;
-    const { samples, endPhase } = generateTone(freq, SAMPLES_PER_BIT, phase);
+    const { samples, endPhase } = generateTone(freq, SAMPLES_PER_BIT, phase, LOOPBACK_AMPLITUDE);
     phase = endPhase;
     for (let i = 0; i < samples.length; i++) {
       pcm[offset++] = samples[i];
     }
   }
 
-  // Post delay: 100ms silence
   for (let i = 0; i < postSamples; i++) {
     pcm[offset++] = 0;
   }
 
-  return createWavBuffer(pcm);
+  return pcm;
+}
+
+export type TransmitAudioOptions = {
+  txDelayMs?: number;
+  digitalGain?: number;
+};
+
+/**
+ * Generates raw PCM (16-bit mono, 44100 Hz) from packet string (8N1 serial).
+ * Preamble: txDelayMs of 1200Hz pre-carrier tone (VOX opener), then AFSK data, then 100ms silence.
+ * digitalGain: multiplies amplitude (0.5–1.5).
+ */
+export function generateAFSKPcm(
+  packetString: string,
+  options: TransmitAudioOptions = {}
+): Int16Array {
+  const { txDelayMs = 300, digitalGain = 1.0 } = options;
+  const bits = stringToBits(packetString);
+  const preambleSamples = Math.round((txDelayMs / 1000) * SAMPLE_RATE);
+  const postSamples = Math.round((POST_DELAY_MS / 1000) * SAMPLE_RATE);
+  const dataSamples = bits.length * SAMPLES_PER_BIT;
+  const totalSamples = preambleSamples + dataSamples + postSamples;
+  const amplitude = AMPLITUDE * Math.max(0.5, Math.min(1.5, digitalGain));
+  const pcm = new Int16Array(totalSamples);
+  let offset = 0;
+
+  const { samples: preambleTone } = generateTone(MARK_FREQ, preambleSamples, 0, amplitude);
+  for (let i = 0; i < preambleSamples; i++) pcm[offset++] = preambleTone[i];
+
+  let phase = 0;
+  for (const bit of bits) {
+    const freq = bit ? MARK_FREQ : SPACE_FREQ;
+    const { samples, endPhase } = generateTone(freq, SAMPLES_PER_BIT, phase, amplitude);
+    phase = endPhase;
+    for (let i = 0; i < samples.length; i++) pcm[offset++] = samples[i];
+  }
+
+  for (let i = 0; i < postSamples; i++) pcm[offset++] = 0;
+
+  return pcm;
+}
+
+/**
+ * Generates AFSK 1200 baud WAV from packet string.
+ */
+export function generateAFSKWav(
+  packetString: string,
+  options: TransmitAudioOptions = {}
+): ArrayBuffer {
+  return createWavBuffer(generateAFSKPcm(packetString, options));
+}
+
+/**
+ * Plays PCM through audio output. Used when we already have PCM (e.g. for waveform callback).
+ */
+export async function playPcm(pcm: Int16Array): Promise<void> {
+  const wavBuffer = createWavBuffer(pcm);
+  const uri = await writeWavToFile(wavBuffer);
+  const { sound } = await Audio.Sound.createAsync({ uri });
+  await sound.setVolumeAsync(1.0);
+  await sound.playAsync();
+  await new Promise<void>((resolve) => {
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish && !status.isLooping) {
+        resolve();
+      }
+    });
+  });
+  await sound.unloadAsync();
 }
 
 /**
@@ -161,9 +228,13 @@ export async function writeWavToFile(wavBuffer: ArrayBuffer): Promise<string> {
 /**
  * Plays AFSK packet through audio output.
  * Configures audio session for clean playback (DoNotMix during transmission).
+ * Uses txDelayMs and digitalGain from options.
+ * Optional onWaveform callback receives PCM for visualization.
  */
-export async function playAFSKPacket(packetString: string): Promise<void> {
-  // Configure for clean signal: no mixing during transmission
+export async function playAFSKPacket(
+  packetString: string,
+  options: TransmitAudioOptions & { onWaveform?: (pcm: Int16Array) => void } = {}
+): Promise<void> {
   await Audio.setAudioModeAsync({
     allowsRecordingIOS: false,
     playsInSilentModeIOS: true,
@@ -174,7 +245,11 @@ export async function playAFSKPacket(packetString: string): Promise<void> {
     interruptionModeIOS: 1, // DoNotMix
   });
 
-  const wavBuffer = generateAFSKWav(packetString);
+  const { onWaveform, ...opts } = options;
+  const pcm = generateAFSKPcm(packetString, opts);
+  onWaveform?.(pcm);
+
+  const wavBuffer = createWavBuffer(pcm);
   const uri = await writeWavToFile(wavBuffer);
 
   const { sound } = await Audio.Sound.createAsync({ uri });

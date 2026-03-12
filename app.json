@@ -49,6 +49,7 @@
         }
       ],
       "./plugins/withHealthKit.js",
+      "./plugins/withMicrophone.js",
       "./plugins/withWatermelonDBSimdjson.js",
       "./plugins/withoutPushForPersonalTeam.js"
     ]

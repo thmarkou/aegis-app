@@ -6,7 +6,7 @@ import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
 import type InventoryItem from '../../../database/models/InventoryItem';
 import type Profile from '../../../database/models/Profile';
-import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
+import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { useWeightWarning } from '../hooks/useWeightWarning';
 import { BlinkingAmberWarning } from '../components/BlinkingAmberWarning';
@@ -25,7 +25,7 @@ function isExpiredOrExpiringSoon(expiryDate: number | null): boolean {
 type Nav = { navigate: (screen: string, params?: { kitId: string; itemId?: string }) => void };
 
 export function KitDetailScreen() {
-  const route = useRoute<RouteProp<InventoryStackParamList, 'KitDetail'>>();
+  const route = useRoute<RouteProp<SharedStackParamList, 'KitDetail'>>();
   const kitId = route.params.kitId;
   const navigation = useNavigation<Nav>();
   const [kit, setKit] = useState<Kit | null>(null);

@@ -3,11 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet 
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { database } from '../../../database';
 import type Profile from '../../../database/models/Profile';
-import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
+import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
 export function ProfileFormScreen() {
-  const route = useRoute<RouteProp<InventoryStackParamList, 'ProfileForm'>>();
+  const route = useRoute<RouteProp<SharedStackParamList, 'ProfileForm'>>();
   const profileId = route.params?.profileId;
   const navigation = useNavigation();
 

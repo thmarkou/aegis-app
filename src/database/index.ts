@@ -11,6 +11,7 @@ import Radio from './models/Radio';
 import Repeater from './models/Repeater';
 import ItemTemplate from './models/ItemTemplate';
 import MessageLog from './models/MessageLog';
+import IncomingStation from './models/IncomingStation';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -23,5 +24,5 @@ const adapter = new SQLiteAdapter({
 
 export const database = new Database({
   adapter,
-  modelClasses: [Kit, InventoryItem, Profile, Radio, Repeater, ItemTemplate, MessageLog],
+  modelClasses: [Kit, InventoryItem, Profile, Radio, Repeater, ItemTemplate, MessageLog, IncomingStation],
 });

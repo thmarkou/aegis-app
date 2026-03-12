@@ -15,6 +15,9 @@ import { tactical } from '../../../shared/tacticalStyles';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { bearingToCardinal } from '../../../shared/utils/geoUtils';
 import { useGarminStore } from '../../../shared/store/useGarminStore';
+import { useAppStore } from '../../../shared/store/useAppStore';
+import { sendEmergencyBroadcast, cancelEmergencyBroadcast } from '../../../services/EmergencyService';
+import { navigateToMap } from '../../../shared/navigation/navigationRef';
 
 const GAUGE_SIZE = 140;
 const STROKE = 12;
@@ -24,7 +27,7 @@ function ReadinessGauge({ score, isCompromised }: { score: number; isCompromised
   const circumference = 2 * Math.PI * RADIUS;
   const halfCircle = circumference / 2;
   const progress = (score / 100) * halfCircle;
-  const strokeColor = isCompromised ? '#ef4444' : score >= 70 ? tactical.amber : '#22c55e';
+  const strokeColor = isCompromised ? '#ef4444' : '#22c55e';
 
   return (
     <View style={styles.gaugeWrap}>
@@ -237,6 +240,7 @@ export function DashboardScreen() {
   const garminBlinkOpacity = useRef(new Animated.Value(1)).current;
   const prevGarminConnected = useRef(false);
 
+  const isGlobalEmergency = useAppStore((s) => s.isGlobalEmergency);
   const garminConnected = useGarminStore((s) => s.connected);
   const garminHeartRate = useGarminStore((s) => s.heartRate);
   const garminSpo2 = useGarminStore((s) => s.spo2);
@@ -266,14 +270,24 @@ export function DashboardScreen() {
     }
   }, [garminConnected, garminBlinkOpacity]);
 
-  const isCompromised = readinessScore < 70;
-  const statusText = isCompromised ? 'MISSION COMPROMISED' : 'OPERATIONAL';
-  const statusColor = isCompromised ? '#ef4444' : tactical.amber;
+  const isReady = readinessScore >= 100;
+  const isCompromised = !isReady;
+  const statusText = isReady ? 'MISSION READY' : 'MISSION COMPROMISED';
+  const statusColor = isReady ? '#22c55e' : '#ef4444';
 
   const handleSosPressIn = () => {
     sosTimerRef.current = setInterval(() => {
-      setSosProgress((p) => Math.min(1, p + 0.02));
+      setSosProgress((p) => Math.min(1, p + 0.01));
     }, 30);
+  };
+
+  const setEmergencyOverlay = useAppStore((s) => s.setEmergencyOverlay);
+
+  const [cancelLoading, setCancelLoading] = React.useState(false);
+  const handleCancelEmergency = async () => {
+    setCancelLoading(true);
+    await cancelEmergencyBroadcast();
+    setCancelLoading(false);
   };
 
   const handleSosPressOut = () => {
@@ -282,14 +296,13 @@ export function DashboardScreen() {
       sosTimerRef.current = null;
     }
     if (sosProgress >= 1) {
-      const msg = 'SOS: MEDICAL';
-      const coords = location
-        ? ` [${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}]`
-        : '';
-      (navigation.getParent() as { navigate: (s: string, p?: object) => void })?.navigate('Comms', {
-        emergencyMessage: msg + coords,
-        emergencyAttachGps: false,
-      });
+      sendEmergencyBroadcast();
+      navigateToMap({ centerOnUser: true });
+      setEmergencyOverlay(false);
+      setTimeout(() => {
+        setEmergencyOverlay(true);
+        setTimeout(() => setEmergencyOverlay(false), 5000);
+      }, 500);
     }
     setSosProgress(0);
   };
@@ -382,6 +395,19 @@ export function DashboardScreen() {
         />
       )}
 
+      {isGlobalEmergency && (
+        <Pressable
+          style={styles.cancelEmergencyBtn}
+          onPress={handleCancelEmergency}
+          disabled={cancelLoading}
+        >
+          <Ionicons name="close" size={20} color={tactical.black} />
+          <Text style={styles.cancelEmergencyText}>
+            {cancelLoading ? 'CANCELLING…' : 'CANCEL EMERGENCY'}
+          </Text>
+        </Pressable>
+      )}
+
       <Pressable
         style={[styles.sosBtn, sosProgress >= 1 && styles.sosBtnActive]}
         onPressIn={handleSosPressIn}
@@ -394,10 +420,11 @@ export function DashboardScreen() {
             <Text style={[styles.sosText, sosProgress >= 1 && styles.sosTextActive]}>
               EMERGENCY BROADCAST
             </Text>
-            <Text style={styles.sosHint}>Hold to activate</Text>
+            <Text style={styles.sosHint}>Hold 3 seconds to activate</Text>
           </View>
         </View>
       </Pressable>
+
     </ScrollView>
   );
 }
@@ -672,6 +699,23 @@ const styles = StyleSheet.create({
   sosHint: {
     color: tactical.zinc[500],
     fontSize: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  cancelEmergencyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: tactical.amber,
+    marginBottom: 16,
+  },
+  cancelEmergencyText: {
+    color: tactical.black,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 2,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });
