@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Platform } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
@@ -10,19 +12,30 @@ import type { SharedStackParamList } from '../../../shared/navigation/sharedStac
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { useWeightWarning } from '../hooks/useWeightWarning';
 import { BlinkingAmberWarning } from '../components/BlinkingAmberWarning';
+import { BlinkingRedWarning } from '../components/BlinkingRedWarning';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 
 const EXPIRY_WARN_DAYS = 30;
+/** Water density: 1 kg per liter. */
+const KG_PER_LITER = 1;
 
-function isExpiredOrExpiringSoon(expiryDate: number | null): boolean {
-  if (!expiryDate) return false;
-  const expiry = new Date(expiryDate);
-  const now = new Date();
-  const daysUntil = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  return daysUntil <= EXPIRY_WARN_DAYS;
+type ExpiryStatus = 'ok' | 'expiring_soon' | 'expired';
+
+function getExpiryStatus(expiryDate: number | null): ExpiryStatus | null {
+  if (!expiryDate) return null;
+  const now = Date.now();
+  const daysUntil = (expiryDate - now) / (1000 * 60 * 60 * 24);
+  if (daysUntil < 0) return 'expired';
+  if (daysUntil <= EXPIRY_WARN_DAYS) return 'expiring_soon';
+  return 'ok';
 }
 
-type Nav = { navigate: (screen: string, params?: { kitId: string; itemId?: string }) => void };
+function isExpiredOrExpiringSoon(expiryDate: number | null): boolean {
+  const status = getExpiryStatus(expiryDate);
+  return status === 'expired' || status === 'expiring_soon';
+}
+
+type Nav = NativeStackNavigationProp<SharedStackParamList, 'KitDetail'>;
 
 export function KitDetailScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'KitDetail'>>();
@@ -43,24 +56,41 @@ export function KitDetailScreen() {
 
   useEffect(() => {
     (async () => {
-      const [profiles, pct, sort] = await Promise.all([
+      const [profiles, pct, sort, settingsBodyWeight] = await Promise.all([
         database.get<Profile>('profiles').query().fetch(),
         SecureSettings.getWeightPercent(),
         SecureSettings.getSortByExpiry(),
+        SecureSettings.getBodyWeightKg(),
       ]);
       setWeightPercent(pct);
       setSortByExpiry(sort);
+      // Settings body weight takes precedence; fallback to first profile
       const first = profiles[0];
-      setBodyWeightKg(first?.bodyWeightKg ?? null);
+      setBodyWeightKg(settingsBodyWeight ?? first?.bodyWeightKg ?? null);
     })();
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       load();
-      SecureSettings.getSortByExpiry().then(setSortByExpiry);
+      Promise.all([
+        SecureSettings.getSortByExpiry(),
+        SecureSettings.getBodyWeightKg(),
+        database.get<Profile>('profiles').query().fetch(),
+      ]).then(([sort, settingsBw, profiles]) => {
+        setSortByExpiry(sort);
+        const first = profiles[0];
+        setBodyWeightKg(settingsBw ?? first?.bodyWeightKg ?? null);
+      });
     }, [load])
   );
+
+  // Update header title when kit loads (fixes Kit name not refreshing after edit)
+  useEffect(() => {
+    if (kit?.name) {
+      navigation.setOptions({ title: kit.name });
+    }
+  }, [kit?.name, navigation]);
 
   const sortedItems = sortByExpiry
     ? [...items].sort((a, b) => {
@@ -70,11 +100,22 @@ export function KitDetailScreen() {
       })
     : items;
 
-  const totalWeight = items.reduce((sum, i) => sum + i.quantity * i.weightGrams, 0);
-  const totalKg = totalWeight / 1000;
-  const { warningPercent } = useWeightWarning(totalWeight, bodyWeightKg, weightPercent);
-  const WEIGHT_WARN_KG = 15;
-  const isOverWeight = totalKg >= WEIGHT_WARN_KG;
+  const itemsWeightGrams = items.reduce((sum, i) => sum + i.quantity * i.weightGrams, 0);
+  const waterLiters = kit?.waterReservoirLiters ?? 0;
+  const waterWeightKg = waterLiters * KG_PER_LITER;
+  const totalWeightGrams = itemsWeightGrams + waterWeightKg * 1000;
+  const totalKg = totalWeightGrams / 1000;
+  const totalCalories = items.reduce((sum, i) => sum + (i.calories ?? 0) * i.quantity, 0);
+
+  const limitKg = bodyWeightKg != null && bodyWeightKg > 0
+    ? bodyWeightKg * (weightPercent / 100)
+    : null;
+  const isOverLimit = limitKg != null && totalKg > limitKg;
+  const bodyWeightPct = bodyWeightKg != null && bodyWeightKg > 0
+    ? Math.round((totalKg / bodyWeightKg) * 100)
+    : null;
+
+  const { warningPercent } = useWeightWarning(totalWeightGrams, bodyWeightKg, weightPercent);
 
   const handleAddItem = () => navigation.navigate('ItemForm', { kitId });
   const handleDeleteItem = (item: InventoryItem) => {
@@ -89,18 +130,64 @@ export function KitDetailScreen() {
 
   if (!kit) return <View style={tacticalStyles.screen} />;
 
-  return (
-    <View style={tacticalStyles.screen}>
-      <View style={[tacticalStyles.header, isOverWeight && styles.weightWarn]}>
-        <Text style={[styles.telemetryLabel, isOverWeight && styles.telemetryWarn]}>
+  const weightDisplay = isOverLimit
+    ? <BlinkingRedWarning text={`PKG_WT: ${totalKg.toFixed(2)} KG`} />
+    : (
+        <Text style={styles.telemetryLabel}>
           PKG_WT: {totalKg.toFixed(2)} KG
         </Text>
-        <Text style={tacticalStyles.headerText}>
-          {items.length} items
-        </Text>
+      );
+
+  const handleEditHydration = () => navigation.navigate('KitForm', { kitId });
+
+  return (
+    <View style={tacticalStyles.screen}>
+      {/* Load Bar - prominent at top */}
+      <View style={[styles.loadBar, isOverLimit && styles.loadBarOver]}>
+        <View style={styles.loadBarRow}>
+          <Text style={styles.loadBarLabel}>LOAD</Text>
+          <Text style={[styles.loadBarValue, isOverLimit && styles.loadBarValueOver]}>
+            {totalKg.toFixed(1)} / {limitKg != null ? limitKg.toFixed(1) : '—'} kg
+          </Text>
+        </View>
+        {limitKg != null && limitKg > 0 && (
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${Math.min(100, (totalKg / limitKg) * 100)}%`,
+                  backgroundColor: isOverLimit ? '#ef4444' : tactical.amber,
+                },
+              ]}
+            />
+          </View>
+        )}
+        {bodyWeightPct != null && (
+          <Text style={styles.loadBarSubtext}>Carrying {bodyWeightPct}% of body weight</Text>
+        )}
+      </View>
+
+      {/* Telemetry block: weight, hydration, calories */}
+      <View style={[styles.telemetryBlock, isOverLimit && styles.weightWarn]}>
+        {weightDisplay}
+        <View style={styles.summaryRow}>
+          <TouchableOpacity
+            style={[styles.hydrationBadge, waterLiters === 0 && styles.hydrationBadgeEmpty]}
+            onPress={handleEditHydration}
+          >
+            <Ionicons name="water" size={18} color={tactical.amber} />
+            <Text style={styles.hydrationText}>{waterLiters}L</Text>
+            <Ionicons name="pencil" size={12} color={tactical.zinc[500]} style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
+          <Text style={styles.summaryText}>{items.length} items</Text>
+          {totalCalories > 0 && (
+            <Text style={styles.caloriesText}>{Math.round(totalCalories)} kcal</Text>
+          )}
+        </View>
         {warningPercent != null && (
-          <Text style={[tacticalStyles.headerText, { color: tactical.amber, marginTop: 4 }]}>
-            ⚠ Weight is {warningPercent}% of body weight (limit: {weightPercent}%)
+          <Text style={styles.warningText}>
+            ⚠ {warningPercent}% of body weight (limit: {weightPercent}%)
           </Text>
         )}
       </View>
@@ -109,20 +196,51 @@ export function KitDetailScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const showExpiryWarn = isExpiredOrExpiringSoon(item.expiryDate);
+          const expiryStatus = getExpiryStatus(item.expiryDate);
+          const itemCal = item.calories != null ? item.quantity * item.calories : 0;
           return (
             <TouchableOpacity
-              style={tacticalStyles.card}
+              style={[styles.itemCard, item.isEssential && styles.essentialCard]}
               onPress={() => navigation.navigate('ItemForm', { kitId, itemId: item.id })}
               onLongPress={() => handleDeleteItem(item)}
             >
               <View style={styles.itemNameRow}>
-                <Text style={tacticalStyles.cardText}>{item.name}</Text>
+                {item.isEssential && (
+                  <Ionicons name="star" size={18} color={tactical.amber} style={styles.essentialIcon} />
+                )}
+                <Text style={[styles.itemName, item.isEssential && styles.essentialText]}>{item.name}</Text>
+                {item.latitude != null && item.longitude != null && (
+                  <Ionicons name="location" size={16} color={tactical.amber} style={styles.locationIcon} />
+                )}
                 {showExpiryWarn && <BlinkingAmberWarning />}
               </View>
-              <Text style={tacticalStyles.cardSubtext}>
-                {item.quantity} {item.unit} · {(item.weightGrams / 1000).toFixed(2)} kg
-                {item.expiryDate ? ` · Exp: ${new Date(item.expiryDate).toISOString().slice(0, 10)}` : ''}
-              </Text>
+              <View style={styles.itemMetaRow}>
+                <Text style={styles.itemMeta}>
+                  {item.quantity} {item.unit} · {(item.weightGrams / 1000).toFixed(2)} kg
+                  {itemCal > 0 && ` · ${Math.round(itemCal)} kcal`}
+                </Text>
+              </View>
+              <View style={styles.itemTagsRow}>
+                {item.condition && (
+                  <View style={styles.tag}>
+                    <Text style={styles.tagText}>{item.condition.charAt(0).toUpperCase() + item.condition.slice(1)}</Text>
+                  </View>
+                )}
+                {expiryStatus && (
+                  <View style={[styles.tag, expiryStatus === 'ok' && styles.tagOk, expiryStatus === 'expiring_soon' && styles.tagExpiringSoon, expiryStatus === 'expired' && styles.tagExpired]}>
+                    <Text style={styles.tagText}>
+                      {expiryStatus === 'expired' && 'EXPIRED'}
+                      {expiryStatus === 'expiring_soon' && 'EXPIRING SOON'}
+                      {expiryStatus === 'ok' && 'OK'}
+                    </Text>
+                  </View>
+                )}
+                {item.expiryDate && (
+                  <Text style={styles.expiryDateText}>
+                    Exp: {new Date(item.expiryDate).toISOString().slice(0, 10)}
+                  </Text>
+                )}
+              </View>
             </TouchableOpacity>
           );
         }}
@@ -136,6 +254,69 @@ export function KitDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadBar: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    padding: 16,
+    backgroundColor: tactical.zinc[900],
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: tactical.amber,
+  },
+  loadBarOver: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  loadBarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  loadBarLabel: {
+    color: tactical.amber,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  loadBarValue: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  loadBarValueOver: {
+    color: '#ef4444',
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: tactical.zinc[700],
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  loadBarSubtext: {
+    color: tactical.zinc[400],
+    fontSize: 13,
+  },
+  telemetryBlock: {
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: tactical.zinc[900],
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+  },
+  weightWarn: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+  },
   telemetryLabel: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 18,
@@ -143,22 +324,115 @@ const styles = StyleSheet.create({
     color: tactical.zinc[400],
     letterSpacing: 1,
   },
-  telemetryWarn: {
-    color: tactical.amber,
-    textShadowColor: tactical.amber,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 10,
   },
-  weightWarn: {
-    backgroundColor: 'rgba(255, 191, 0, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 191, 0, 0.3)',
+  hydrationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 191, 0, 0.2)',
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: tactical.amber,
+  },
+  hydrationBadgeEmpty: {
+    backgroundColor: tactical.zinc[900],
+    borderColor: tactical.zinc[700],
+  },
+  hydrationText: {
+    color: tactical.amber,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  summaryText: {
+    color: tactical.zinc[400],
+    fontSize: 14,
+  },
+  caloriesText: {
+    color: tactical.amber,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  warningText: {
+    color: tactical.amber,
+    fontSize: 13,
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  itemCard: {
+    backgroundColor: tactical.zinc[900],
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginVertical: 8,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+  },
+  itemName: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
   },
   itemNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  itemMetaRow: {
+    marginTop: 4,
+  },
+  itemMeta: {
+    color: tactical.zinc[400],
+    fontSize: 14,
+  },
+  itemTagsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: tactical.zinc[700],
+  },
+  tagText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  tagOk: {
+    backgroundColor: '#166534',
+  },
+  tagExpiringSoon: {
+    backgroundColor: 'rgba(255, 191, 0, 0.4)',
+  },
+  tagExpired: {
+    backgroundColor: '#ef4444',
+  },
+  expiryDateText: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+  },
+  essentialCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: tactical.amber,
+  },
+  essentialText: {
+    color: tactical.amber,
+  },
+  essentialIcon: {
+    marginRight: 6,
+  },
+  locationIcon: {
+    marginLeft: 6,
   },
 });

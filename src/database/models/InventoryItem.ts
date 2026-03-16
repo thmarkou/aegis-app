@@ -18,6 +18,7 @@ export default class InventoryItem extends Model {
   @field('calories') calories!: number | null;
   @field('quantity') quantity!: number;
   @field('is_essential') isEssential!: boolean;
+  @field('condition') condition!: string | null;
   @field('notes') notes!: string | null;
   @field('latitude') latitude!: number | null;
   @field('longitude') longitude!: number | null;

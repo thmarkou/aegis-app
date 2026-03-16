@@ -5,6 +5,8 @@ export type GarminState = {
   connected: boolean;
   /** Heart rate in BPM (null when not available) */
   heartRate: number | null;
+  /** True if HR is from last 2h (live); false if from today (stale) */
+  heartRateLive: boolean;
   /** Blood oxygen saturation 0–100 (null when not available) */
   spo2: number | null;
   /** Resting heart rate in BPM (null when not available) */
@@ -17,7 +19,7 @@ export type GarminState = {
 
 type GarminActions = {
   setConnected: (connected: boolean) => void;
-  setHeartRate: (hr: number | null) => void;
+  setHeartRate: (hr: number | null, live?: boolean) => void;
   setSpo2: (spo2: number | null) => void;
   setRestingHeartRate: (rhr: number | null) => void;
   setActiveEnergyKcal: (kcal: number | null) => void;
@@ -28,6 +30,7 @@ type GarminActions = {
 const initialState: GarminState = {
   connected: false,
   heartRate: null,
+  heartRateLive: true,
   spo2: null,
   restingHeartRate: null,
   activeEnergyKcal: null,
@@ -38,7 +41,7 @@ export const useGarminStore = create<GarminState & GarminActions>((set) => ({
   ...initialState,
   setConnected: (connected) =>
     set({ connected, error: connected ? null : undefined }),
-  setHeartRate: (heartRate) => set({ heartRate }),
+  setHeartRate: (heartRate, live = true) => set({ heartRate, heartRateLive: live }),
   setSpo2: (spo2) => set({ spo2 }),
   setRestingHeartRate: (restingHeartRate) => set({ restingHeartRate }),
   setActiveEnergyKcal: (activeEnergyKcal) => set({ activeEnergyKcal }),

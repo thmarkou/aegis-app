@@ -12,6 +12,8 @@ export default class Kit extends Model {
 
   @field('name') name!: string;
   @field('description') description!: string | null;
+  @field('water_reservoir_liters') waterReservoirLiters!: number | null;
+  @field('icon_type') iconType!: string | null;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 

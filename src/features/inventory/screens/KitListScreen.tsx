@@ -1,12 +1,26 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Q } from '@nozbe/watermelondb';
+import { Ionicons } from '@expo/vector-icons';
 import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
-import { tacticalStyles } from '../../../shared/tacticalStyles';
+import type { KitIconType } from '../../../shared/types';
+import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
 type Nav = { navigate: (screen: string, params?: { kitId: string }) => void };
+
+const KIT_ICON_MAP: Record<KitIconType, keyof typeof Ionicons.glyphMap> = {
+  backpack: 'bag-outline',
+  car: 'car-outline',
+  home: 'home-outline',
+};
+
+function getKitIcon(iconType: string | null): keyof typeof Ionicons.glyphMap {
+  if (iconType && iconType in KIT_ICON_MAP) {
+    return KIT_ICON_MAP[iconType as KitIconType];
+  }
+  return 'cube-outline';
+}
 
 export function KitListScreen() {
   const navigation = useNavigation<Nav>();
@@ -27,6 +41,8 @@ export function KitListScreen() {
       await kitsCollection.create((record) => {
         record.name = 'New Kit';
         record.description = null;
+        record.waterReservoirLiters = null;
+        record.iconType = null;
         record.createdAt = new Date();
         record.updatedAt = new Date();
       });
@@ -69,12 +85,17 @@ export function KitListScreen() {
             onPress={() => navigation.navigate('KitDetail', { kitId: item.id })}
             onLongPress={() => handleDelete(item)}
           >
-            <Text style={tacticalStyles.cardText}>{item.name}</Text>
-            {item.description ? (
-              <Text style={tacticalStyles.cardSubtext} numberOfLines={1}>
-                {item.description}
-              </Text>
-            ) : null}
+            <View style={styles.cardRow}>
+              <Ionicons name={getKitIcon(item.iconType)} size={24} color={tactical.amber} style={styles.kitIcon} />
+              <View style={styles.cardContent}>
+                <Text style={tacticalStyles.cardText}>{item.name}</Text>
+                {item.description ? (
+                  <Text style={tacticalStyles.cardSubtext} numberOfLines={1}>
+                    {item.description}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
@@ -90,4 +111,14 @@ export function KitListScreen() {
 
 const styles = StyleSheet.create({
   listContent: { paddingTop: 16, paddingBottom: 24 },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  kitIcon: {
+    marginRight: 12,
+  },
+  cardContent: {
+    flex: 1,
+  },
 });

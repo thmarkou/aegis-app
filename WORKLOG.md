@@ -258,6 +258,52 @@
 
 ---
 
+## 2026-03-16 (Δευτέρα) – Apple Health Integration & UI Fixes
+
+### Apple Health (HealthKit) – πλήρης ολοκλήρωση
+- **Πηγή δεδομένων**: BPM, Effort, Active Calories από Apple Health (όχι BLE)
+- **Permissions**: HealthKit modal στο startup ή όταν εισέρχεται στο Dashboard
+- **Read access**: HeartRate, ActiveEnergyBurned, StepCount
+
+### Real-time Sync
+- HR poll κάθε 5s για live display
+- Full poll κάθε 20s (SpO2, RHR, Active Energy)
+- **Last Known Value**: αν δεν υπάρχει HR στο 2h window, fetch από σήμερα (faded display)
+
+### Effort Calculation
+- Effort = (HR - RHR) / (MaxHR - RHR) με zone (LIGHT/MODERATE/HARD/MAX)
+- **Max HR**: νέο πεδίο στο Settings (60–250 BPM), SecureSettings.getMaxHeartRate/setMaxHeartRate
+
+### Settings – Apple Health
+- **Enable Apple Health** toggle: άμεση αντίδραση (local state), αποθήκευση σε SecureSettings
+- **Visual proof**: κόκκινο label όταν OFF, πράσινο όταν ON
+- **Your Maximum Heart Rate (Max HR)**: για effort calculation
+
+### Dashboard – BioMetricsSection
+- **Visibility**: εμφανίζεται όταν appleHealthEnabled OR garminConnected (όχι μόνο garminConnected)
+- **Labels**: BPM, EFFORT, ACTIVE always visible
+- **Static Text only**: κανένα TextInput, μόνο `<Text>`
+- **Fallback**: `--` όταν null/zero, "Waiting for Apple Health data..." κάτω
+- **Container**: minHeight 120 για ορατότητα
+- **BPM Magenta**: #ff00ff για test build
+
+### Pull-to-Refresh & Permissions
+- **RefreshControl** στο Dashboard: άμεσο HealthKit sync
+- **Grant Health Permissions** button: ανοίγει system settings (Linking.openSettings)
+
+### Reliability & Crash Fixes
+- **GarminSyncService**: safe HealthKit load με try/catch (require αντί για import)
+- AppleHealthKit null check πριν κάθε κλήση
+- BioMetricsSection simplified: αφαίρεση Animated, heartRateLive
+
+### Slider
+- **TacticalSlider**: custom PanResponder-based (όχι @react-native-community/slider)
+
+### Git
+- Commit & push στο GitHub
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

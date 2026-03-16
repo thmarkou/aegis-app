@@ -1,13 +1,15 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 7,
+  version: 9,
   tables: [
     tableSchema({
       name: 'kits',
       columns: [
         { name: 'name', type: 'string' },
         { name: 'description', type: 'string', isOptional: true },
+        { name: 'water_reservoir_liters', type: 'number', isOptional: true },
+        { name: 'icon_type', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -24,6 +26,7 @@ export default appSchema({
         { name: 'calories', type: 'number', isOptional: true },
         { name: 'quantity', type: 'number' },
         { name: 'is_essential', type: 'boolean' },
+        { name: 'condition', type: 'string', isOptional: true },
         { name: 'notes', type: 'string', isOptional: true },
         { name: 'latitude', type: 'number', isOptional: true },
         { name: 'longitude', type: 'number', isOptional: true },

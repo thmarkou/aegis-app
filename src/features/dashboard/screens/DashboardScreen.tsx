@@ -7,6 +7,8 @@ import {
   Platform,
   Animated,
   Pressable,
+  RefreshControl,
+  Linking,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +17,8 @@ import { tactical } from '../../../shared/tacticalStyles';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { bearingToCardinal } from '../../../shared/utils/geoUtils';
 import { useGarminStore } from '../../../shared/store/useGarminStore';
+import { requestHealthPermissions, refreshHealthData } from '../../../shared/services/GarminSyncService';
+import * as SecureSettings from '../../../shared/services/secureSettings';
 import { useAppStore } from '../../../shared/store/useAppStore';
 import { sendEmergencyBroadcast, cancelEmergencyBroadcast } from '../../../services/EmergencyService';
 import { navigateToMap } from '../../../shared/navigation/navigationRef';
@@ -106,96 +110,68 @@ const DEFAULT_MAX_HR = 190;
 
 function computeEffort(
   hr: number | null,
-  rhr: number | null
+  rhr: number | null,
+  maxHr: number | null
 ): { value: string; zone?: string } {
   if (hr == null) return { value: '--' };
-  if (rhr == null) {
-    if (hr < 100) return { value: '--', zone: 'REST' };
-    if (hr < 120) return { value: '--', zone: 'LIGHT' };
-    if (hr < 140) return { value: '--', zone: 'MODERATE' };
-    if (hr < 160) return { value: '--', zone: 'HARD' };
-    return { value: '--', zone: 'MAX' };
-  }
-  const maxHr = DEFAULT_MAX_HR;
-  const ratio = Math.max(0, Math.min(1, (hr - rhr) / (maxHr - rhr)));
+  const max = maxHr ?? DEFAULT_MAX_HR;
+  const rest = rhr ?? 60;
+  const ratio = Math.max(0, Math.min(1, (hr - rest) / (max - rest)));
   const pct = Math.round(ratio * 100);
   const zone =
     pct < 30 ? 'LIGHT' : pct < 60 ? 'MODERATE' : pct < 85 ? 'HARD' : 'MAX';
   return { value: `${pct}%`, zone };
 }
 
+/**
+ * Bio-Metrics: BPM, Effort, Active Calories from HealthKit.
+ * Static Text only—no TextInput. Always visible when Apple Health is enabled.
+ */
 function BioMetricsSection({
   heartRate,
   spo2,
   restingHeartRate,
   activeEnergyKcal,
+  maxHeartRate,
 }: {
   heartRate: number | null;
   spo2: number | null;
   restingHeartRate: number | null;
   activeEnergyKcal: number | null;
+  maxHeartRate: number | null;
 }) {
-  const spo2Opacity = useRef(new Animated.Value(1)).current;
-  const spo2Low = spo2 != null && spo2 < 90;
-  const hrHigh = heartRate != null && heartRate > 160;
-
-  useEffect(() => {
-    if (spo2Low) {
-      const blink = Animated.loop(
-        Animated.sequence([
-          Animated.timing(spo2Opacity, { toValue: 0.4, duration: 500, useNativeDriver: true }),
-          Animated.timing(spo2Opacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        ])
-      );
-      blink.start();
-      return () => blink.stop();
-    }
-    spo2Opacity.setValue(1);
-  }, [spo2Low, spo2Opacity]);
-
-  const effort = computeEffort(heartRate, restingHeartRate);
-  const spo2Display = spo2 != null ? `${spo2}%` : '--%';
-  const hrDisplay = heartRate != null ? `${heartRate} BPM` : '-- BPM';
-  const kcalDisplay = activeEnergyKcal != null ? `${activeEnergyKcal} kcal` : '-- kcal';
+  const effort = computeEffort(heartRate, restingHeartRate, maxHeartRate);
+  const hrDisplay = heartRate != null && heartRate > 0 ? `${heartRate} BPM` : '--';
+  const effortDisplay = effort.value;
+  const effortZone = effort.zone ? ` · ${effort.zone}` : '';
+  const kcalDisplay = activeEnergyKcal != null && activeEnergyKcal > 0 ? `${activeEnergyKcal} kcal` : '--';
+  const hasNoData = heartRate == null || heartRate === 0;
 
   return (
-    <View style={styles.bioSection}>
-      <Text style={styles.bioLabel}>BIO-METRICS</Text>
-      <View style={styles.bioRow}>
-        <View style={styles.bioItem}>
-          <Ionicons name="heart" size={14} color={tactical.amber} />
-          <Text style={styles.bioLabelSm}>HR</Text>
-          <Text style={styles.bioValue}>{hrDisplay}</Text>
-          {hrHigh && <Text style={styles.bioAlert}>HIGH EXERTION</Text>}
-        </View>
-        <View style={styles.bioItem}>
-          <Text style={styles.bioO2Icon}>O₂</Text>
-          <Text style={styles.bioLabelSm}>SpO2</Text>
-          <Animated.Text
-            style={[
-              styles.bioValue,
-              spo2Low && styles.bioValueSpo2Low,
-              spo2Low && { opacity: spo2Opacity },
-            ]}
-          >
-            {spo2Display}
-          </Animated.Text>
-        </View>
-        <View style={styles.bioItem}>
-          <Text style={styles.bioLabelSm}>EFFORT</Text>
-          <Text style={styles.bioValue}>
-            {effort.value}
-            {effort.zone ? ` · ${effort.zone}` : ''}
-          </Text>
-        </View>
+    <View style={[styles.bioSection, { minHeight: 120 }]} pointerEvents="box-none">
+      <View style={styles.bioHeaderRow}>
+        <Text style={styles.bioLabel}>BIO-METRICS</Text>
+        <Text style={styles.bioSourceLabel}>Apple Health</Text>
       </View>
       <View style={styles.bioRow}>
-        <View style={styles.bioItem}>
+        <View style={styles.bioItem} pointerEvents="none">
+          <Ionicons name="heart" size={14} color={tactical.amber} />
+          <Text style={styles.bioLabelSm}>BPM</Text>
+          <Text style={[styles.bioValue, styles.bioValueBpm]} selectable={false}>{hrDisplay}</Text>
+        </View>
+        <View style={styles.bioItem} pointerEvents="none">
+          <Text style={styles.bioLabelSm}>EFFORT</Text>
+          <Text style={styles.bioValue} selectable={false}>{effortDisplay}{effortZone}</Text>
+        </View>
+        <View style={styles.bioItem} pointerEvents="none">
           <Ionicons name="flame" size={14} color={tactical.amber} />
           <Text style={styles.bioLabelSm}>ACTIVE</Text>
-          <Text style={styles.bioValue}>{kcalDisplay}</Text>
+          <Text style={styles.bioValue} selectable={false}>{kcalDisplay}</Text>
         </View>
       </View>
+      {hasNoData && (
+        <Text style={styles.bioWaitingText}>Waiting for Apple Health data...</Text>
+      )}
     </View>
   );
 }
@@ -247,10 +223,28 @@ export function DashboardScreen() {
   const garminRhr = useGarminStore((s) => s.restingHeartRate);
   const garminActiveKcal = useGarminStore((s) => s.activeEnergyKcal);
   const garminError = useGarminStore((s) => s.error);
+  const [maxHeartRate, setMaxHeartRate] = React.useState<number | null>(null);
+  const [appleHealthEnabled, setAppleHealthEnabled] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const handleRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    refresh();
+    refreshHealthData();
+    await new Promise((r) => setTimeout(r, 800));
+    setRefreshing(false);
+  }, [refresh]);
 
   useFocusEffect(
     React.useCallback(() => {
-      refresh();
+      try {
+        refresh();
+        requestHealthPermissions().catch(() => {});
+        SecureSettings.getMaxHeartRate().then(setMaxHeartRate).catch(() => {});
+        SecureSettings.getGarminLinked().then(setAppleHealthEnabled).catch(() => {});
+      } catch {
+        // Never block Dashboard render
+      }
       return () => {};
     }, [refresh])
   );
@@ -312,6 +306,17 @@ export function DashboardScreen() {
       style={styles.screen}
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
+      keyboardShouldPersistTaps="never"
+      keyboardDismissMode="on-drag"
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={tactical.amber}
+          colors={[tactical.amber]}
+          progressViewOffset={Platform.OS === 'android' ? 24 : 0}
+        />
+      }
     >
       <Text style={styles.title}>TACTICAL DASHBOARD</Text>
       <View style={styles.coordsRow}>
@@ -323,9 +328,12 @@ export function DashboardScreen() {
           <Text style={styles.coordsHud}>LAT -- · LON --</Text>
         )}
         {garminError === 'HEALTH_ACCESS_DENIED' && (
-          <View style={styles.garminBadgeError}>
-            <Text style={styles.garminBadgeErrorText}>HEALTH_ACCESS_DENIED</Text>
-          </View>
+          <Pressable
+            style={styles.grantHealthBtn}
+            onPress={() => Linking.openSettings()}
+          >
+            <Text style={styles.grantHealthBtnText}>Grant Health Permissions</Text>
+          </Pressable>
         )}
         {garminConnected && garminError !== 'HEALTH_ACCESS_DENIED' && (
           <Animated.View style={[styles.garminBadge, { opacity: garminBlinkOpacity }]}>
@@ -386,12 +394,13 @@ export function DashboardScreen() {
         </View>
       )}
 
-      {garminConnected && garminError !== 'HEALTH_ACCESS_DENIED' && (
+      {(appleHealthEnabled || garminConnected) && garminError !== 'HEALTH_ACCESS_DENIED' && (
         <BioMetricsSection
           heartRate={garminHeartRate}
           spo2={garminSpo2}
           restingHeartRate={garminRhr}
           activeEnergyKcal={garminActiveKcal}
+          maxHeartRate={maxHeartRate}
         />
       )}
 
@@ -457,6 +466,21 @@ const styles = StyleSheet.create({
     backgroundColor: tactical.amber,
     borderWidth: 1,
     borderColor: tactical.amber,
+  },
+  grantHealthBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: tactical.amber,
+    borderWidth: 1,
+    borderColor: tactical.amber,
+  },
+  grantHealthBtnText: {
+    color: tactical.black,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   garminBadgeError: {
     flexDirection: 'row',
@@ -597,10 +621,28 @@ const styles = StyleSheet.create({
     borderColor: tactical.zinc[700],
     marginBottom: 24,
   },
+  bioHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   bioLabel: {
     color: tactical.zinc[500],
     fontSize: 11,
     letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  bioSourceLabel: {
+    color: tactical.amber,
+    fontSize: 9,
+    letterSpacing: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  bioWaitingText: {
+    color: tactical.zinc[500],
+    fontSize: 10,
+    fontStyle: 'italic',
     marginBottom: 8,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
@@ -630,6 +672,9 @@ const styles = StyleSheet.create({
   },
   bioValueSpo2Low: {
     color: '#ef4444',
+  },
+  bioValueBpm: {
+    color: '#ff00ff',
   },
   bioO2Icon: {
     color: tactical.amber,

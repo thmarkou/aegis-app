@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, StyleSheet, Switch } from 'react-native';
-import Slider from '@react-native-community/slider';
+import { TacticalSlider } from '../../../shared/components/TacticalSlider';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../../../shared/navigation/SettingsStack';
@@ -11,7 +11,6 @@ import {
     setGarminLinked,
     connectGarminDevice,
   } from '../../../shared/services/GarminSyncService';
-import { useGarminStore } from '../../../shared/store/useGarminStore';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { getCacheSizeBytes, clearCache } from '../../map/services/TileCacheService';
 
@@ -23,6 +22,8 @@ export function SettingsScreen() {
   const logout = useAppStore((s) => s.logout);
   const [expiryDays, setExpiryDays] = useState('14');
   const [weightPercent, setWeightPercent] = useState('20');
+  const [bodyWeightKg, setBodyWeightKg] = useState('');
+  const [maxHeartRate, setMaxHeartRate] = useState('');
   const [callsign, setCallsign] = useState('SY2EYH');
   const [ssid, setSsid] = useState('7');
   const [newPin, setNewPin] = useState('');
@@ -30,14 +31,14 @@ export function SettingsScreen() {
   const [sortByExpiry, setSortByExpiry] = useState(false);
   const [txDelayMs, setTxDelayMs] = useState(300);
   const [digitalGain, setDigitalGain] = useState(1.0);
-  const garminConnected = useGarminStore((s) => s.connected);
-  const [garminLoading, setGarminLoading] = useState(false);
+  const [appleHealthEnabled, setAppleHealthEnabled] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       getCacheSizeBytes().then((bytes) => {
         setCacheSizeMb((bytes / (1024 * 1024)).toFixed(1));
       });
+      SecureSettings.getGarminLinked().then(setAppleHealthEnabled);
     }, [])
   );
 
@@ -45,14 +46,18 @@ export function SettingsScreen() {
     Promise.all([
       SecureSettings.getExpiryDays(),
       SecureSettings.getWeightPercent(),
+      SecureSettings.getBodyWeightKg(),
+      SecureSettings.getMaxHeartRate(),
       SecureSettings.getCallsign(),
       SecureSettings.getSsid(),
       SecureSettings.getSortByExpiry(),
       SecureSettings.getTxDelayMs(),
       SecureSettings.getDigitalGain(),
-    ]).then(([d, p, c, s, sort, tx, gain]) => {
+    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain]) => {
       setExpiryDays(String(d));
       setWeightPercent(String(p));
+      setBodyWeightKg(bw != null ? String(bw) : '');
+      setMaxHeartRate(mhr != null ? String(mhr) : '');
       setCallsign(c);
       setSsid(String(s));
       setSortByExpiry(sort);
@@ -77,6 +82,38 @@ export function SettingsScreen() {
       return;
     }
     await SecureSettings.setWeightPercent(n);
+  };
+
+  const handleSaveMaxHeartRate = async () => {
+    const trimmed = maxHeartRate.trim();
+    if (!trimmed) {
+      await SecureSettings.setMaxHeartRate(null);
+      setMaxHeartRate('');
+      return;
+    }
+    const n = parseInt(trimmed, 10);
+    if (isNaN(n) || n < 60 || n > 250) {
+      Alert.alert('Invalid', 'Enter 60–250 BPM');
+      return;
+    }
+    await SecureSettings.setMaxHeartRate(n);
+    Alert.alert('Saved', 'Max HR saved for Effort calculation.');
+  };
+
+  const handleSaveBodyWeight = async () => {
+    const trimmed = bodyWeightKg.trim();
+    if (!trimmed) {
+      await SecureSettings.setBodyWeightKg(null);
+      setBodyWeightKg('');
+      return;
+    }
+    const w = parseFloat(trimmed);
+    if (isNaN(w) || w < 1 || w > 500) {
+      Alert.alert('Invalid', 'Enter 1–500 kg');
+      return;
+    }
+    await SecureSettings.setBodyWeightKg(w);
+    Alert.alert('Saved', 'Body weight saved. Load calculations will use this value.');
   };
 
   const handleChangePin = async () => {
@@ -190,74 +227,90 @@ export function SettingsScreen() {
       <Text style={tacticalStyles.sectionDesc}>
         TX preamble and digital gain for Quansheng/iPhone adapter. Saved automatically.
       </Text>
-      <View style={styles.sliderRow}>
-        <Text style={tacticalStyles.label}>TX Delay (Preamble)</Text>
-        <Text style={styles.sliderValue}>{txDelayMs} ms</Text>
+      <View style={styles.sliderBlock}>
+        <View style={styles.sliderRow}>
+          <Text style={styles.sliderLabel}>TX Delay (Preamble)</Text>
+          <Text style={styles.sliderValue}>{txDelayMs} ms</Text>
+        </View>
+        <Text style={styles.sliderRange}>100 – 1000 ms</Text>
+        <View style={styles.sliderTrack}>
+          <TacticalSlider
+            value={txDelayMs}
+            minimumValue={SecureSettings.TX_DELAY_MIN_MS}
+            maximumValue={SecureSettings.TX_DELAY_MAX_MS}
+            step={50}
+            onValueChange={(v) => {
+              const rounded = Math.round(v);
+              setTxDelayMs(rounded);
+              SecureSettings.setTxDelayMs(rounded);
+            }}
+            minimumTrackTintColor={tactical.amber}
+            maximumTrackTintColor={tactical.zinc[700]}
+            thumbTintColor={tactical.amber}
+          />
+        </View>
       </View>
-      <Slider
-        style={styles.slider}
-        minimumValue={SecureSettings.TX_DELAY_MIN_MS}
-        maximumValue={SecureSettings.TX_DELAY_MAX_MS}
-        step={50}
-        value={txDelayMs}
-        onValueChange={(v) => {
-          const rounded = Math.round(v);
-          setTxDelayMs(rounded);
-          SecureSettings.setTxDelayMs(rounded);
-        }}
-        minimumTrackTintColor={tactical.amber}
-        maximumTrackTintColor={tactical.zinc[700]}
-        thumbTintColor={tactical.amber}
-      />
-      <View style={styles.sliderRow}>
-        <Text style={tacticalStyles.label}>Digital Gain</Text>
-        <Text style={styles.sliderValue}>{digitalGain.toFixed(2)}</Text>
+      <View style={styles.sliderBlock}>
+        <View style={styles.sliderRow}>
+          <Text style={styles.sliderLabel}>Digital Gain</Text>
+          <Text style={styles.sliderValue}>{digitalGain.toFixed(2)}</Text>
+        </View>
+        <Text style={styles.sliderRange}>0.5 – 1.5</Text>
+        <View style={styles.sliderTrack}>
+          <TacticalSlider
+            value={digitalGain}
+            minimumValue={SecureSettings.DIGITAL_GAIN_MIN}
+            maximumValue={SecureSettings.DIGITAL_GAIN_MAX}
+            step={0.05}
+            onValueChange={(v) => {
+              const rounded = Math.round(v * 100) / 100;
+              setDigitalGain(rounded);
+              SecureSettings.setDigitalGain(rounded);
+            }}
+            minimumTrackTintColor={tactical.amber}
+            maximumTrackTintColor={tactical.zinc[700]}
+            thumbTintColor={tactical.amber}
+          />
+        </View>
       </View>
-      <Slider
-        style={styles.slider}
-        minimumValue={SecureSettings.DIGITAL_GAIN_MIN}
-        maximumValue={SecureSettings.DIGITAL_GAIN_MAX}
-        step={0.05}
-        value={digitalGain}
-        onValueChange={(v) => {
-          const rounded = Math.round(v * 100) / 100;
-          setDigitalGain(rounded);
-          SecureSettings.setDigitalGain(rounded);
-        }}
-        minimumTrackTintColor={tactical.amber}
-        maximumTrackTintColor={tactical.zinc[700]}
-        thumbTintColor={tactical.amber}
-      />
 
-      <Text style={tacticalStyles.sectionTitle}>Link Garmin Device</Text>
+      <Text style={tacticalStyles.sectionTitle}>Apple Health</Text>
       <Text style={tacticalStyles.sectionDesc}>
-        Read heart rate from Apple Health (Garmin Fenix syncs via Garmin Connect). Grants Health access on toggle.
+        BPM, Effort, Active Calories from Apple Health. Grant read access on toggle.
       </Text>
+      <Text style={tacticalStyles.label}>Your Maximum Heart Rate (Max HR)</Text>
+      <Text style={[tacticalStyles.sectionDesc, { marginBottom: 8 }]}>
+        For effort % only. Live BPM is never editable—it comes from Apple Health only.
+      </Text>
+      <View style={[styles.weightRow, { marginBottom: 16 }]}>
+        <TextInput
+          style={styles.bodyWeightInput}
+          value={maxHeartRate}
+          onChangeText={setMaxHeartRate}
+          onBlur={handleSaveMaxHeartRate}
+          keyboardType="number-pad"
+          placeholder="e.g. 190 (effort % only)"
+          placeholderTextColor="#666"
+        />
+        <TouchableOpacity style={tacticalStyles.btnSmall} onPress={handleSaveMaxHeartRate}>
+          <Text style={tacticalStyles.btnSmallText}>Save</Text>
+        </TouchableOpacity>
+      </View>
       <View style={[tacticalStyles.rowInline, { justifyContent: 'space-between' }]}>
-        <Text style={tacticalStyles.label}>
-          {garminLoading ? 'Requesting access...' : 'Link Garmin Device'}
+        <Text style={[tacticalStyles.label, { color: appleHealthEnabled ? '#22c55e' : '#ef4444' }]}>
+          Enable Apple Health
         </Text>
         <Switch
-          value={garminConnected}
-          disabled={garminLoading}
+          value={appleHealthEnabled}
           onValueChange={async (v) => {
+            setAppleHealthEnabled(v);
+            await setGarminLinked(v);
             if (v) {
-              setGarminLoading(true);
-              const ok = await connectGarminDevice();
-              setGarminLoading(false);
-              if (!ok) {
-                await setGarminLinked(false);
-                const err = useGarminStore.getState().error;
-                if (err === 'HEALTH_ACCESS_DENIED') {
-                  Alert.alert('HEALTH_ACCESS_DENIED', 'Grant Health access in Settings → Health → Data Access.');
-                }
-              }
-            } else {
-              await setGarminLinked(false);
+              connectGarminDevice().catch(() => {});
             }
           }}
           trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
-          thumbColor={garminConnected ? tactical.black : tactical.zinc[400]}
+          thumbColor={appleHealthEnabled ? tactical.black : tactical.zinc[400]}
         />
       </View>
 
@@ -273,8 +326,26 @@ export function SettingsScreen() {
         <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>Clear cache</Text>
       </TouchableOpacity>
 
-      <Text style={tacticalStyles.sectionTitle}>Weight warning</Text>
-      <Text style={tacticalStyles.sectionDesc}>Warn when kit weight exceeds this % of body weight.</Text>
+      <Text style={tacticalStyles.sectionTitle}>Weight Warning</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        Your body weight and tactical limit %. Required for load calculations.
+      </Text>
+      <Text style={[tacticalStyles.label, { color: tactical.amber, fontWeight: '600' }]}>Your Body Weight (kg)</Text>
+      <View style={styles.weightRow}>
+        <TextInput
+          style={styles.bodyWeightInput}
+          value={bodyWeightKg}
+          onChangeText={setBodyWeightKg}
+          onBlur={handleSaveBodyWeight}
+          keyboardType="decimal-pad"
+          placeholder="e.g. 75"
+          placeholderTextColor="#666"
+        />
+        <TouchableOpacity style={tacticalStyles.btnSmall} onPress={handleSaveBodyWeight}>
+          <Text style={tacticalStyles.btnSmallText}>Save</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={tacticalStyles.label}>Tactical Limit (%)</Text>
       <View style={tacticalStyles.rowInline}>
         <TextInput
           style={tacticalStyles.inputSmall}
@@ -283,7 +354,7 @@ export function SettingsScreen() {
           onBlur={handleSaveWeight}
           keyboardType="number-pad"
         />
-        <Text style={{ color: tactical.zinc[500], fontSize: 16 }}>%</Text>
+        <Text style={{ color: tactical.amber, fontSize: 16, fontWeight: '600' }}>%</Text>
       </View>
 
       {isAdmin && (
@@ -321,20 +392,55 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: tactical.black },
   content: { padding: 24, paddingBottom: 48 },
+  sliderBlock: {
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: tactical.zinc[900],
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+  },
   sliderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
+  sliderLabel: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   sliderValue: {
     color: tactical.amber,
-    fontSize: 14,
+    fontSize: 18,
+    fontWeight: '700',
     fontFamily: 'monospace',
   },
-  slider: {
-    width: '100%',
+  sliderRange: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  sliderTrack: {
     height: 40,
+    justifyContent: 'center',
+  },
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginBottom: 16,
+  },
+  bodyWeightInput: {
+    width: 120,
+    backgroundColor: tactical.zinc[900],
+    borderWidth: 2,
+    borderColor: tactical.amber,
+    borderRadius: 12,
+    padding: 14,
+    color: tactical.amber,
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

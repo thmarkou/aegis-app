@@ -83,5 +83,26 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 8,
+      steps: [
+        addColumns({
+          table: 'kits',
+          columns: [
+            { name: 'water_reservoir_liters', type: 'number', isOptional: true },
+            { name: 'icon_type', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 9,
+      steps: [
+        addColumns({
+          table: 'inventory_items',
+          columns: [{ name: 'condition', type: 'string', isOptional: true }],
+        }),
+      ],
+    },
   ],
 });

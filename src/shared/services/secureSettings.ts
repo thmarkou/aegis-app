@@ -6,6 +6,8 @@ const KEYS = {
   shtfMode: 'aegis_shtf_mode',
   expiryDays: 'aegis_expiry_days',
   weightPercent: 'aegis_weight_percent',
+  bodyWeightKg: 'aegis_body_weight_kg',
+  maxHeartRate: 'aegis_max_heart_rate',
   callsign: 'aegis_callsign',
   ssid: 'aegis_ssid',
   sortByExpiry: 'aegis_sort_by_expiry',
@@ -75,6 +77,38 @@ export async function setWeightPercent(pct: number): Promise<void> {
   await SecureStore.setItemAsync(KEYS.weightPercent, String(pct));
 }
 
+export async function getBodyWeightKg(): Promise<number | null> {
+  const v = await SecureStore.getItemAsync(KEYS.bodyWeightKg);
+  if (!v) return null;
+  const n = parseFloat(v);
+  return isNaN(n) || n < 1 || n > 500 ? null : n;
+}
+
+export async function setBodyWeightKg(kg: number | null): Promise<void> {
+  if (kg == null) {
+    await SecureStore.deleteItemAsync(KEYS.bodyWeightKg);
+    return;
+  }
+  const clamped = Math.max(1, Math.min(500, Math.round(kg * 10) / 10));
+  await SecureStore.setItemAsync(KEYS.bodyWeightKg, String(clamped));
+}
+
+export async function getMaxHeartRate(): Promise<number | null> {
+  const v = await SecureStore.getItemAsync(KEYS.maxHeartRate);
+  if (!v) return null;
+  const n = parseInt(v, 10);
+  return isNaN(n) || n < 60 || n > 250 ? null : n;
+}
+
+export async function setMaxHeartRate(bpm: number | null): Promise<void> {
+  if (bpm == null) {
+    await SecureStore.deleteItemAsync(KEYS.maxHeartRate);
+    return;
+  }
+  const clamped = Math.max(60, Math.min(250, Math.round(bpm)));
+  await SecureStore.setItemAsync(KEYS.maxHeartRate, String(clamped));
+}
+
 export async function getCallsign(): Promise<string> {
   return (await SecureStore.getItemAsync(KEYS.callsign)) ?? DEFAULTS.callsign;
 }
@@ -142,9 +176,10 @@ export async function setTestMode(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(KEYS.testMode, enabled ? 'true' : 'false');
 }
 
+/** Default true on first launch so HealthKit permission modal is triggered. */
 export async function getGarminLinked(): Promise<boolean> {
   const v = await SecureStore.getItemAsync(KEYS.garminLinked);
-  return v === 'true';
+  return v !== 'false';
 }
 
 export async function setGarminLinked(linked: boolean): Promise<void> {

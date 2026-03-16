@@ -11,6 +11,7 @@ import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { TemplatePicker, type TemplatePickResult } from '../components/TemplatePicker';
 
 const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio', 'Vehicle', 'Base Camp'];
+const CONDITIONS = ['New', 'Used'] as const;
 
 export function ItemFormScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'ItemForm'>>();
@@ -24,6 +25,7 @@ export function ItemFormScreen() {
   const [expiryDate, setExpiryDate] = useState('');
   const [weightGrams, setWeightGrams] = useState('');
   const [calories, setCalories] = useState('');
+  const [condition, setCondition] = useState<string | null>(null);
   const [isEssential, setIsEssential] = useState(false);
   const [notes, setNotes] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -42,6 +44,7 @@ export function ItemFormScreen() {
       setExpiryDate(item.expiryDate ? new Date(item.expiryDate).toISOString().slice(0, 10) : '');
       setWeightGrams(String(item.weightGrams));
       setCalories(item.calories != null ? String(item.calories) : '');
+      setCondition(item.condition ? item.condition.charAt(0).toUpperCase() + item.condition.slice(1) : null);
       setIsEssential(item.isEssential);
       setNotes(item.notes ?? '');
       setLatitude(item.latitude ?? null);
@@ -116,6 +119,7 @@ export function ItemFormScreen() {
           r.expiryDate = expiry;
           r.weightGrams = w;
           r.calories = cal;
+          r.condition = condition?.toLowerCase() || null;
           r.isEssential = isEssential;
           r.notes = notes.trim() || null;
           r.latitude = latitude;
@@ -132,6 +136,7 @@ export function ItemFormScreen() {
           r.expiryDate = expiry;
           r.weightGrams = w;
           r.calories = cal;
+          r.condition = condition?.toLowerCase() || null;
           r.isEssential = isEssential;
           r.notes = notes.trim() || null;
           r.latitude = latitude;
@@ -160,10 +165,18 @@ export function ItemFormScreen() {
           placeholderTextColor="#666"
         />
         <TouchableOpacity
-          style={styles.templateBtn}
+          style={styles.iconBtn}
           onPress={() => setPickerVisible(true)}
         >
           <Ionicons name="search" size={20} color={tactical.amber} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.iconBtn}
+          onPress={() => {
+            /* Barcode scanner placeholder - will be implemented later */
+          }}
+        >
+          <Ionicons name="barcode-outline" size={24} color={tactical.amber} />
         </TouchableOpacity>
       </View>
       <TemplatePicker
@@ -237,6 +250,18 @@ export function ItemFormScreen() {
       <TextInput style={tacticalStyles.input} value={weightGrams} onChangeText={setWeightGrams} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#666" />
       <Text style={tacticalStyles.label}>Calories</Text>
       <TextInput style={tacticalStyles.input} value={calories} onChangeText={setCalories} keyboardType="decimal-pad" placeholder="Optional" placeholderTextColor="#666" />
+      <Text style={tacticalStyles.label}>Condition</Text>
+      <View style={tacticalStyles.row}>
+        {CONDITIONS.map((c) => (
+          <TouchableOpacity
+            key={c}
+            style={[tacticalStyles.categoryChip, condition === c ? tacticalStyles.categoryChipActive : tacticalStyles.categoryChipInactive]}
+            onPress={() => setCondition(condition === c ? null : c)}
+          >
+            <Text style={condition === c ? tacticalStyles.categoryChipTextActive : tacticalStyles.categoryChipTextInactive}>{c}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       <View style={styles.switchRow}>
         <Text style={tacticalStyles.label}>Essential item</Text>
         <Switch
@@ -290,7 +315,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   nameInput: { flex: 1, marginBottom: 0 },
-  templateBtn: {
+  iconBtn: {
     width: 48,
     height: 48,
     borderRadius: 12,

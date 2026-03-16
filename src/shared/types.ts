@@ -16,10 +16,15 @@ export interface Profile {
   updatedAt: string;
 }
 
+/** Kit icon type for visual identification (backpack, car, home). */
+export type KitIconType = 'backpack' | 'car' | 'home';
+
 export interface Kit {
   id: string;
   name: string;
   description: string | null;
+  waterReservoirLiters: number | null;
+  iconType: KitIconType | null;
   createdAt: string;
   updatedAt: string;
 }

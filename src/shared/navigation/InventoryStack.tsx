@@ -48,15 +48,15 @@ export function InventoryStack() {
                 </View>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => navigation.navigate('Profiles')} style={styles.headerBtn}>
-              <View style={styles.headerBtnInner}>
-                <Ionicons
-                  name="people-outline"
-                  size={24}
-                  color="#FFBF00"
-                  style={styles.iconCentered}
-                />
-              </View>
-            </TouchableOpacity>
+                <View style={styles.headerBtnInner}>
+                  <Ionicons
+                    name="people-outline"
+                    size={24}
+                    color="#FFBF00"
+                    style={styles.iconCentered}
+                  />
+                </View>
+              </TouchableOpacity>
             </View>
           ),
         })}
@@ -66,7 +66,7 @@ export function InventoryStack() {
         name="KitDetail"
         component={KitDetailScreen}
         options={({ route, navigation }) => ({
-          title: 'Kit',
+          title: 'Kit', // Overridden by KitDetailScreen via setOptions when kit loads
           headerRight: () => (
             <TouchableOpacity
               onPress={() => navigation.navigate('KitForm', { kitId: route.params.kitId })}
