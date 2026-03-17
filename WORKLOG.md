@@ -304,6 +304,36 @@
 
 ---
 
+## 2026-03-17 (Τρίτη) – HealthKit Fix, Inventory Polish, UX Improvements
+
+### HealthKit – Κρίσιμη διόρθωση
+- **Πρόβλημα**: "HealthKit module not loaded (rebuild native app)" – το module δεν φόρτωνε
+- **Αιτία**: `require('react-native-health').default` – το package δεν έχει default export
+- **Λύση**: `require('react-native-health')` απευθείας (module.exports = HealthKit)
+- **Αποτέλεσμα**: BPM, Effort, Active Calories τώρα εμφανίζονται σωστά από Apple Health
+
+### Health Debugging & UX
+- **Συγκεκριμένα error messages**: αντί για "HEALTH_UNAVAILABLE", πλέον "HealthKit unavailable (Simulator or device without Health app)" ή "HealthKit module not loaded (rebuild native app)"
+- **Retry Connection** button μέσα στο Bio-Metrics card όταν υπάρχει error
+- **Auto-clear error**: όταν έρχονται πραγματικά δεδομένα (HR, SpO2, Active Energy), το error διαγράφεται αυτόματα
+- **BPM styling**: placeholder `--` σε Orange (#FF8C00), live data σε Green (#22c55e)
+- **Grant Health Permissions** button: εμφανίζεται όταν το error περιέχει "denied", "permission", "access"
+
+### Inventory – Barcode & Location
+- **Schema v11**: `barcode` column στο `inventory_items`
+- **Barcode στο Item List**: μικρό amber badge με εικονίδιο + truncated barcode (π.χ. 590...457)
+- **Barcode στο Item Form**: εμφάνιση με Scan icon για re-scan
+- **Location tagging**: "Tag Current Location" λειτουργεί αμέσως κατά το Add Item (χωρίς "Save First")
+- **Duplicate barcode**: όταν σκανάρεις barcode που υπάρχει ήδη στο kit, εμφανίζεται alert και "View Item" → highlight στο Kit Detail για 5 δευτερόλεπτα (Animated fade-out)
+
+### Max HR Info
+- **SettingsScreen**: info text κάτω από Max HR: "Typical range: 160–200. Used for Effort % calculation."
+
+### Git
+- Commit & push στο GitHub
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

@@ -12,10 +12,11 @@ import { Platform } from 'react-native';
 const HR_POLL_INTERVAL_MS = 5000;
 const FULL_POLL_INTERVAL_MS = 20000;
 
+// react-native-health exports via module.exports (no default). Use the module directly.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let AppleHealthKit: any = null;
 try {
-  AppleHealthKit = require('react-native-health').default;
+  AppleHealthKit = require('react-native-health');
 } catch {
   // react-native-health not available (e.g. Android, or module not linked)
 }
@@ -41,6 +42,13 @@ function isAvailableAsync(): Promise<boolean> {
   });
 }
 
+/** Re-attempt HealthKit connection. Use for Retry button. */
+export async function retryHealthConnection(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  useGarminStore.getState().setError(null);
+  return connectGarminDevice();
+}
+
 function initHealthKitAsync(options: {
   permissions: { read: string[]; write: string[] };
 }): Promise<boolean> {
@@ -61,10 +69,13 @@ export async function initGarminService(): Promise<void> {
   if (Platform.OS !== 'ios') return;
   const store = useGarminStore.getState();
   try {
-    if (!AppleHealthKit) return;
+    if (!AppleHealthKit) {
+      store.setError('HealthKit module not loaded (rebuild native app)');
+      return;
+    }
     const available = await isAvailableAsync();
     if (!available) {
-      store.setError('HEALTH_UNAVAILABLE');
+      store.setError('HealthKit unavailable (Simulator or device without Health app)');
       return;
     }
     const linked = await SecureSettings.getGarminLinked();
@@ -72,8 +83,9 @@ export async function initGarminService(): Promise<void> {
       const ok = await connectGarminDevice();
       if (!ok) await SecureSettings.setGarminLinked(false);
     }
-  } catch {
-    store.setError('HEALTH_UNAVAILABLE');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    store.setError(msg || 'HealthKit init failed');
   }
 }
 
@@ -95,7 +107,7 @@ export async function connectGarminDevice(): Promise<boolean> {
     return false;
   }
   if (!AppleHealthKit) {
-    useGarminStore.getState().setError('HEALTH_UNAVAILABLE');
+    useGarminStore.getState().setError('HealthKit module not loaded (rebuild native app)');
     return false;
   }
 
@@ -107,7 +119,7 @@ export async function connectGarminDevice(): Promise<boolean> {
     const hrPerm = Permissions.HeartRate ?? 'HeartRate';
     const available = await isAvailableAsync();
     if (!available) {
-      store.setError('HEALTH_UNAVAILABLE');
+      store.setError('HealthKit unavailable (Simulator or device without Health app)');
       return false;
     }
 
@@ -130,8 +142,9 @@ export async function connectGarminDevice(): Promise<boolean> {
     store.setConnected(true);
     startHealthPolling();
     return true;
-  } catch {
-    store.setError('HEALTH_ACCESS_DENIED');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    store.setError(msg || 'HEALTH_ACCESS_DENIED');
     store.setConnected(false);
     return false;
   }
@@ -146,55 +159,58 @@ function fetchLatestHeartRate(): void {
 
   const endDate = new Date();
   const twoHoursAgo = new Date(endDate.getTime() - 2 * 60 * 60 * 1000);
-  const midnightToday = new Date(endDate);
-  midnightToday.setHours(0, 0, 0, 0);
+  const twentyFourHoursAgo = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
+
+  function trySetFromResults(results: HealthSample[] | undefined): boolean {
+    if (!Array.isArray(results) || results.length === 0) return false;
+    const sample = results[0];
+    const val = sample?.value;
+    if (typeof val !== 'number') return false;
+    store.setHeartRate(Math.round(val), true);
+    store.setError(null); // Clear any stale error once real data arrives
+    return true;
+  }
 
   try {
     AppleHealthKit.getHeartRateSamples(
-    {
-      startDate: twoHoursAgo.toISOString(),
-      endDate: endDate.toISOString(),
-      ascending: false,
-      limit: 20,
-    },
-    (err: unknown, results: HealthSample[] | undefined) => {
-      try {
-        if (err) {
-          store.setHeartRate(null);
-          return;
-        }
-        if (Array.isArray(results) && results.length > 0) {
-          const sample = results[0];
-          store.setHeartRate(Math.round(sample.value), true);
-          return;
-        }
-        // No HR in last 2h: try last known value from today
-        if (!AppleHealthKit) return;
-        AppleHealthKit.getHeartRateSamples(
-          {
-            startDate: midnightToday.toISOString(),
-            endDate: endDate.toISOString(),
-            ascending: false,
-            limit: 1,
-          },
-          (err2: unknown, results2: HealthSample[] | undefined) => {
-            try {
-              if (err2 || !Array.isArray(results2) || results2.length === 0) {
-                store.setHeartRate(null);
-                return;
-              }
-              const sample = results2[0];
-              store.setHeartRate(Math.round(sample.value), false);
-            } catch {
-              store.setHeartRate(null);
-            }
+      {
+        startDate: twoHoursAgo.toISOString(),
+        endDate: endDate.toISOString(),
+        ascending: false,
+        limit: 20,
+      },
+      (err: unknown, results: HealthSample[] | undefined) => {
+        try {
+          if (err) {
+            store.setHeartRate(null);
+            return;
           }
-        );
-      } catch {
-        store.setHeartRate(null);
+          if (trySetFromResults(results)) return;
+          if (!AppleHealthKit) return;
+          AppleHealthKit.getHeartRateSamples(
+            {
+              startDate: twentyFourHoursAgo.toISOString(),
+              endDate: endDate.toISOString(),
+              ascending: false,
+              limit: 1,
+            },
+            (err2: unknown, results2: HealthSample[] | undefined) => {
+              try {
+                if (err2) {
+                  store.setHeartRate(null);
+                  return;
+                }
+                if (!trySetFromResults(results2)) store.setHeartRate(null);
+              } catch {
+                store.setHeartRate(null);
+              }
+            }
+          );
+        } catch {
+          store.setHeartRate(null);
+        }
       }
-    }
-  );
+    );
   } catch {
     store.setHeartRate(null);
   }
@@ -229,6 +245,7 @@ function fetchLatestSpo2(): void {
           const sample = results[0];
           const pct = Math.round(sample.value * 100);
           store.setSpo2(Math.min(100, Math.max(0, pct)));
+          store.setError(null);
         } catch {
           store.setSpo2(null);
         }
@@ -285,6 +302,18 @@ function fetchLatestActiveEnergy(): void {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setHours(0, 0, 0, 0);
+  const twentyFourHoursAgo = new Date(endDate.getTime() - 24 * 60 * 60 * 1000);
+
+  function trySetFromResults(results: Array<{ value?: number }> | undefined): boolean {
+    if (!Array.isArray(results) || results.length === 0) return false;
+    const total = results.reduce((sum, r) => sum + (r.value ?? 0), 0);
+    if (total > 0) {
+      store.setActiveEnergyKcal(Math.round(total));
+      store.setError(null);
+      return true;
+    }
+    return false;
+  }
 
   try {
     AppleHealthKit.getActiveEnergyBurned(
@@ -299,12 +328,26 @@ function fetchLatestActiveEnergy(): void {
             store.setActiveEnergyKcal(null);
             return;
           }
-          if (!Array.isArray(results) || results.length === 0) {
-            store.setActiveEnergyKcal(null);
-            return;
-          }
-          const total = results.reduce((sum, r) => sum + (r.value ?? 0), 0);
-          store.setActiveEnergyKcal(Math.round(total));
+          if (trySetFromResults(results)) return;
+          if (!AppleHealthKit) return;
+          AppleHealthKit.getActiveEnergyBurned(
+            {
+              startDate: twentyFourHoursAgo.toISOString(),
+              endDate: endDate.toISOString(),
+              ascending: false,
+            },
+            (err2: unknown, results2: Array<{ value: number }> | undefined) => {
+              try {
+                if (err2) {
+                  store.setActiveEnergyKcal(null);
+                  return;
+                }
+                if (!trySetFromResults(results2)) store.setActiveEnergyKcal(null);
+              } catch {
+                store.setActiveEnergyKcal(null);
+              }
+            }
+          );
         } catch {
           store.setActiveEnergyKcal(null);
         }
@@ -364,8 +407,9 @@ export async function requestHealthPermissions(): Promise<boolean> {
     if (!linked) return false;
     const ok = await connectGarminDevice();
     return ok;
-  } catch {
-    useGarminStore.getState().setError('HEALTH_UNAVAILABLE');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    useGarminStore.getState().setError(msg || 'HealthKit init failed');
     return false;
   }
 }

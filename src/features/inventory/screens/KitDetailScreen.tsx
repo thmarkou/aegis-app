@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Platform } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Platform, Animated } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,17 +35,41 @@ function isExpiredOrExpiringSoon(expiryDate: number | null): boolean {
   return status === 'expired' || status === 'expiring_soon';
 }
 
+function truncateBarcode(barcode: string, head = 3, tail = 3): string {
+  if (barcode.length <= head + tail) return barcode;
+  return `${barcode.slice(0, head)}...${barcode.slice(-tail)}`;
+}
+
 type Nav = NativeStackNavigationProp<SharedStackParamList, 'KitDetail'>;
 
 export function KitDetailScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'KitDetail'>>();
-  const kitId = route.params.kitId;
+  const { kitId, highlightedItemId } = route.params;
   const navigation = useNavigation<Nav>();
   const [kit, setKit] = useState<Kit | null>(null);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
   const [weightPercent, setWeightPercent] = useState(20);
   const [sortByExpiry, setSortByExpiry] = useState(false);
+  const highlightOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!highlightedItemId) return;
+    highlightOpacity.setValue(1);
+    const anim = Animated.timing(highlightOpacity, {
+      toValue: 0,
+      duration: 5000,
+      useNativeDriver: true,
+    });
+    anim.start();
+    const t = setTimeout(() => {
+      navigation.setParams({ highlightedItemId: undefined });
+    }, 5000);
+    return () => {
+      anim.stop();
+      clearTimeout(t);
+    };
+  }, [highlightedItemId, highlightOpacity, navigation]);
 
   const load = useCallback(async () => {
     const k = await database.get<Kit>('kits').find(kitId);
@@ -198,12 +222,17 @@ export function KitDetailScreen() {
           const showExpiryWarn = isExpiredOrExpiringSoon(item.expiryDate);
           const expiryStatus = getExpiryStatus(item.expiryDate);
           const itemCal = item.calories != null ? item.quantity * item.calories : 0;
+          const isHighlighted = highlightedItemId === item.id;
           return (
-            <TouchableOpacity
-              style={[styles.itemCard, item.isEssential && styles.essentialCard]}
-              onPress={() => navigation.navigate('ItemForm', { kitId, itemId: item.id })}
-              onLongPress={() => handleDeleteItem(item)}
-            >
+            <View style={styles.itemCardWrap}>
+              <TouchableOpacity
+                style={[
+                  styles.itemCard,
+                  item.isEssential && styles.essentialCard,
+                ]}
+                onPress={() => navigation.navigate('ItemForm', { kitId, itemId: item.id })}
+                onLongPress={() => handleDeleteItem(item)}
+              >
               <View style={styles.itemNameRow}>
                 {item.isEssential && (
                   <Ionicons name="star" size={18} color={tactical.amber} style={styles.essentialIcon} />
@@ -221,6 +250,14 @@ export function KitDetailScreen() {
                 </Text>
               </View>
               <View style={styles.itemTagsRow}>
+                {item.barcode && (
+                  <View style={styles.barcodeTag}>
+                    <Ionicons name="barcode-outline" size={12} color={tactical.amber} />
+                    <Text style={styles.barcodeTagText} numberOfLines={1}>
+                      {truncateBarcode(item.barcode)}
+                    </Text>
+                  </View>
+                )}
                 {item.condition && (
                   <View style={styles.tag}>
                     <Text style={styles.tagText}>{item.condition.charAt(0).toUpperCase() + item.condition.slice(1)}</Text>
@@ -242,6 +279,17 @@ export function KitDetailScreen() {
                 )}
               </View>
             </TouchableOpacity>
+            {isHighlighted && (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.itemCardHighlightOverlay,
+                  { opacity: highlightOpacity },
+                ]}
+              />
+            )}
+            </View>
           );
         }}
         ListEmptyComponent={<Text style={tacticalStyles.emptyText}>No items. Tap + to add.</Text>}
@@ -366,14 +414,23 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '600',
   },
-  itemCard: {
-    backgroundColor: tactical.zinc[900],
+  itemCardWrap: {
     marginHorizontal: 16,
     marginVertical: 8,
+    position: 'relative',
+  },
+  itemCard: {
+    backgroundColor: tactical.zinc[900],
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: tactical.zinc[700],
+  },
+  itemCardHighlightOverlay: {
+    backgroundColor: 'rgba(255, 191, 0, 0.2)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: tactical.amber,
   },
   itemName: {
     color: '#ffffff',
@@ -434,5 +491,21 @@ const styles = StyleSheet.create({
   },
   locationIcon: {
     marginLeft: 6,
+  },
+  barcodeTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 191, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: tactical.amber,
+  },
+  barcodeTagText: {
+    color: tactical.amber,
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 });

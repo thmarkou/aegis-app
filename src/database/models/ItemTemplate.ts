@@ -8,4 +8,5 @@ export default class ItemTemplate extends Model {
   @field('category') category!: string;
   @field('weight_grams') weightGrams!: number;
   @field('expiry_date') expiryDate!: number | null;
+  @field('barcode') barcode!: string | null;
 }

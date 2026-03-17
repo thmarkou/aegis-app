@@ -3,7 +3,7 @@
  */
 export type SharedStackParamList = {
   KitList: undefined;
-  KitDetail: { kitId: string };
+  KitDetail: { kitId: string; highlightedItemId?: string };
   KitForm: { kitId: string };
   ItemForm: { kitId: string; itemId?: string };
   Profiles: undefined;

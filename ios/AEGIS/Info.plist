@@ -45,8 +45,8 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
-    <key>NSFaceIDUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to use Face ID</string>
+    <key>NSCameraUsageDescription</key>
+    <string>AEGIS needs camera access to scan barcodes for inventory items.</string>
     <key>NSHealthShareUsageDescription</key>
     <string>AEGIS reads heart rate, blood oxygen (SpO2), resting heart rate, active energy, steps, and distance from Apple Health for the tactical dashboard and APRS status messages.</string>
     <key>NSHealthUpdateUsageDescription</key>
@@ -58,7 +58,7 @@
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>AEGIS needs location for APRS beacon packets.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <string>AEGIS uses the microphone to decode APRS packets from your radio. Audio is processed locally and not transmitted.</string>
     <key>NSMotionUsageDescription</key>
     <string>AEGIS uses step count for DIST_WALKED telemetry on the tactical dashboard.</string>
     <key>UILaunchStoryboardName</key>

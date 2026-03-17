@@ -104,5 +104,23 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 10,
+      steps: [
+        addColumns({
+          table: 'item_templates',
+          columns: [{ name: 'barcode', type: 'string', isOptional: true, isIndexed: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 11,
+      steps: [
+        addColumns({
+          table: 'inventory_items',
+          columns: [{ name: 'barcode', type: 'string', isOptional: true, isIndexed: true }],
+        }),
+      ],
+    },
   ],
 });

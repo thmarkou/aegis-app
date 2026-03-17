@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 9,
+  version: 11,
   tables: [
     tableSchema({
       name: 'kits',
@@ -28,6 +28,7 @@ export default appSchema({
         { name: 'is_essential', type: 'boolean' },
         { name: 'condition', type: 'string', isOptional: true },
         { name: 'notes', type: 'string', isOptional: true },
+        { name: 'barcode', type: 'string', isOptional: true, isIndexed: true },
         { name: 'latitude', type: 'number', isOptional: true },
         { name: 'longitude', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
@@ -60,6 +61,7 @@ export default appSchema({
         { name: 'category', type: 'string', isIndexed: true },
         { name: 'weight_grams', type: 'number' },
         { name: 'expiry_date', type: 'number', isOptional: true },
+        { name: 'barcode', type: 'string', isOptional: true, isIndexed: true },
       ],
     }),
     tableSchema({

@@ -278,9 +278,12 @@ export function SettingsScreen() {
       <Text style={tacticalStyles.sectionDesc}>
         BPM, Effort, Active Calories from Apple Health. Grant read access on toggle.
       </Text>
-      <Text style={tacticalStyles.label}>Your Maximum Heart Rate (Max HR)</Text>
-      <Text style={[tacticalStyles.sectionDesc, { marginBottom: 8 }]}>
+      <Text style={tacticalStyles.label}>User Max HR (Check Garmin Connect)</Text>
+      <Text style={[tacticalStyles.sectionDesc, { marginBottom: 4 }]}>
         For effort % only. Live BPM is never editable—it comes from Apple Health only.
+      </Text>
+      <Text style={[tacticalStyles.sectionDesc, { marginBottom: 8, color: tactical.zinc[500], fontSize: 12 }]}>
+        Typical range: 160–200. Used for Effort % calculation.
       </Text>
       <View style={[styles.weightRow, { marginBottom: 16 }]}>
         <TextInput

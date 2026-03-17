@@ -17,7 +17,7 @@ import { tactical } from '../../../shared/tacticalStyles';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { bearingToCardinal } from '../../../shared/utils/geoUtils';
 import { useGarminStore } from '../../../shared/store/useGarminStore';
-import { requestHealthPermissions, refreshHealthData } from '../../../shared/services/GarminSyncService';
+import { requestHealthPermissions, refreshHealthData, retryHealthConnection } from '../../../shared/services/GarminSyncService';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { useAppStore } from '../../../shared/store/useAppStore';
 import { sendEmergencyBroadcast, cancelEmergencyBroadcast } from '../../../services/EmergencyService';
@@ -133,12 +133,16 @@ function BioMetricsSection({
   restingHeartRate,
   activeEnergyKcal,
   maxHeartRate,
+  garminError,
+  onRetry,
 }: {
   heartRate: number | null;
   spo2: number | null;
   restingHeartRate: number | null;
   activeEnergyKcal: number | null;
   maxHeartRate: number | null;
+  garminError: string | null;
+  onRetry: () => void;
 }) {
   const effort = computeEffort(heartRate, restingHeartRate, maxHeartRate);
   const hrDisplay = heartRate != null && heartRate > 0 ? `${heartRate} BPM` : '--';
@@ -157,21 +161,28 @@ function BioMetricsSection({
         <View style={styles.bioItem} pointerEvents="none">
           <Ionicons name="heart" size={14} color={tactical.amber} />
           <Text style={styles.bioLabelSm}>BPM</Text>
-          <Text style={[styles.bioValue, styles.bioValueBpm]} selectable={false}>{hrDisplay}</Text>
+          <Text style={[styles.bioValue, (hrDisplay === '--' ? styles.bioValuePlaceholder : styles.bioValueBpmLive)]} selectable={false}>{hrDisplay}</Text>
         </View>
         <View style={styles.bioItem} pointerEvents="none">
           <Text style={styles.bioLabelSm}>EFFORT</Text>
-          <Text style={styles.bioValue} selectable={false}>{effortDisplay}{effortZone}</Text>
+          <Text style={[styles.bioValue, effortDisplay === '--' ? styles.bioValuePlaceholder : undefined]} selectable={false}>{effortDisplay}{effortZone}</Text>
         </View>
         <View style={styles.bioItem} pointerEvents="none">
           <Ionicons name="flame" size={14} color={tactical.amber} />
           <Text style={styles.bioLabelSm}>ACTIVE</Text>
-          <Text style={styles.bioValue} selectable={false}>{kcalDisplay}</Text>
+          <Text style={[styles.bioValue, kcalDisplay === '--' ? styles.bioValuePlaceholder : undefined]} selectable={false}>{kcalDisplay}</Text>
         </View>
       </View>
-      {hasNoData && (
+      {garminError ? (
+        <View style={styles.bioErrorRow}>
+          <Text style={styles.bioErrorText}>{garminError}</Text>
+          <Pressable style={styles.retryBtn} onPress={onRetry}>
+            <Text style={styles.retryBtnText}>Retry Connection</Text>
+          </Pressable>
+        </View>
+      ) : hasNoData ? (
         <Text style={styles.bioWaitingText}>Waiting for Apple Health data...</Text>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -327,7 +338,7 @@ export function DashboardScreen() {
         ) : (
           <Text style={styles.coordsHud}>LAT -- · LON --</Text>
         )}
-        {garminError === 'HEALTH_ACCESS_DENIED' && (
+        {garminError && (garminError === 'HEALTH_ACCESS_DENIED' || /denied|permission|access/i.test(garminError)) && (
           <Pressable
             style={styles.grantHealthBtn}
             onPress={() => Linking.openSettings()}
@@ -335,7 +346,7 @@ export function DashboardScreen() {
             <Text style={styles.grantHealthBtnText}>Grant Health Permissions</Text>
           </Pressable>
         )}
-        {garminConnected && garminError !== 'HEALTH_ACCESS_DENIED' && (
+        {garminConnected && !garminError && (
           <Animated.View style={[styles.garminBadge, { opacity: garminBlinkOpacity }]}>
             <Text style={styles.garminText}>
               {garminHeartRate != null ? `HR: ${garminHeartRate} BPM` : 'FNX8_VIA_HEALTH'}
@@ -394,13 +405,18 @@ export function DashboardScreen() {
         </View>
       )}
 
-      {(appleHealthEnabled || garminConnected) && garminError !== 'HEALTH_ACCESS_DENIED' && (
+      {(appleHealthEnabled || garminConnected) && (
         <BioMetricsSection
           heartRate={garminHeartRate}
           spo2={garminSpo2}
           restingHeartRate={garminRhr}
           activeEnergyKcal={garminActiveKcal}
           maxHeartRate={maxHeartRate}
+          garminError={garminError}
+          onRetry={async () => {
+            const ok = await retryHealthConnection();
+            if (ok) refreshHealthData();
+          }}
         />
       )}
 
@@ -646,6 +662,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
+  bioErrorText: {
+    color: '#ef4444',
+    fontSize: 10,
+    marginBottom: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
   bioRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -674,7 +696,32 @@ const styles = StyleSheet.create({
     color: '#ef4444',
   },
   bioValueBpm: {
-    color: '#ff00ff',
+    color: '#00ffff',
+  },
+  bioValueBpmLive: {
+    color: '#22c55e',
+  },
+  bioValuePlaceholder: {
+    color: '#FF8C00',
+  },
+  bioErrorRow: {
+    marginBottom: 8,
+    gap: 8,
+  },
+  retryBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: tactical.zinc[700],
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: tactical.amber,
+  },
+  retryBtnText: {
+    color: tactical.amber,
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   bioO2Icon: {
     color: tactical.amber,

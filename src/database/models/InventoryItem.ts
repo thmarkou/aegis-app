@@ -20,6 +20,7 @@ export default class InventoryItem extends Model {
   @field('is_essential') isEssential!: boolean;
   @field('condition') condition!: string | null;
   @field('notes') notes!: string | null;
+  @field('barcode') barcode!: string | null;
   @field('latitude') latitude!: number | null;
   @field('longitude') longitude!: number | null;
   @date('created_at') createdAt!: Date;

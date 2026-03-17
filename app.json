@@ -48,6 +48,12 @@
           "motionPermission": "AEGIS uses step count for DIST_WALKED telemetry on the tactical dashboard."
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "AEGIS needs camera access to scan barcodes for inventory items."
+        }
+      ],
       "./plugins/withHealthKit.js",
       "./plugins/withMicrophone.js",
       "./plugins/withWatermelonDBSimdjson.js",

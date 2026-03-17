@@ -4,11 +4,14 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
 import type InventoryItem from '../../../database/models/InventoryItem';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { TemplatePicker, type TemplatePickResult } from '../components/TemplatePicker';
+import { BarcodeScannerModal, type BarcodeScanResult } from '../components/BarcodeScannerModal';
+import type ItemTemplate from '../../../database/models/ItemTemplate';
 
 const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio', 'Vehicle', 'Base Camp'];
 const CONDITIONS = ['New', 'Used'] as const;
@@ -32,6 +35,9 @@ export function ItemFormScreen() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [taggingLocation, setTaggingLocation] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
+  const [barcode, setBarcode] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
@@ -49,6 +55,7 @@ export function ItemFormScreen() {
       setNotes(item.notes ?? '');
       setLatitude(item.latitude ?? null);
       setLongitude(item.longitude ?? null);
+      setBarcode(item.barcode ?? null);
     });
   }, [itemId]);
 
@@ -60,11 +67,55 @@ export function ItemFormScreen() {
     setWeightGrams(String(r.weightGrams));
   };
 
-  const handleTagLocation = async () => {
-    if (!itemId) {
-      Alert.alert('Save First', 'Save the item before tagging location.');
+  const handleBarcodeScan = async (result: BarcodeScanResult) => {
+    const items = database.get<InventoryItem>('inventory_items');
+    const kitItems = await items.query(Q.where('kit_id', kitId)).fetch();
+    const existingInKit = kitItems.find((i) => i.barcode === result.barcode);
+    if (existingInKit) {
+      setBarcodeScannerVisible(false);
+      Alert.alert(
+        'Duplicate Barcode',
+        `"${existingInKit.name}" already has this barcode in this kit. Avoid duplicates.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'View Item',
+            onPress: () => {
+              (navigation.getParent() as { navigate: (s: string, p: object) => void })?.navigate('KitDetail', {
+                kitId,
+                highlightedItemId: existingInKit.id,
+              });
+              navigation.goBack();
+            },
+          },
+        ]
+      );
       return;
     }
+    const templates = database.get<ItemTemplate>('item_templates');
+    const match = await templates.query().fetch();
+    const found = match.find((t) => t.barcode === result.barcode);
+    if (found) {
+      setName(found.name);
+      setCategory(found.category);
+      setWeightGrams(String(found.weightGrams));
+      setScannedBarcode(found.barcode ?? null);
+      setBarcode(found.barcode ?? null);
+    } else {
+      setScannedBarcode(result.barcode);
+      setBarcode(result.barcode);
+      Alert.alert(
+        'New Barcode',
+        `Barcode ${result.barcode} not in catalog. Enter item name and save to add it for future scans.`,
+        [{ text: 'OK' }]
+      );
+      setName('');
+      setCategory('Gear');
+      setWeightGrams('');
+    }
+  };
+
+  const handleTagLocation = async () => {
     setTaggingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -75,17 +126,21 @@ export function ItemFormScreen() {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const lat = loc.coords.latitude;
       const lon = loc.coords.longitude;
-      await database.write(async () => {
-        const item = await database.get<InventoryItem>('inventory_items').find(itemId);
-        await item.update((r) => {
-          r.latitude = lat;
-          r.longitude = lon;
-          r.updatedAt = new Date();
-        });
-      });
       setLatitude(lat);
       setLongitude(lon);
-      Alert.alert('Tagged', 'Current location saved.');
+      if (itemId) {
+        await database.write(async () => {
+          const item = await database.get<InventoryItem>('inventory_items').find(itemId);
+          await item.update((r) => {
+            r.latitude = lat;
+            r.longitude = lon;
+            r.updatedAt = new Date();
+          });
+        });
+        Alert.alert('Tagged', 'Current location saved.');
+      } else {
+        Alert.alert('Tagged', 'Location will be saved with the new item.');
+      }
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to get location');
     } finally {
@@ -124,6 +179,7 @@ export function ItemFormScreen() {
           r.notes = notes.trim() || null;
           r.latitude = latitude;
           r.longitude = longitude;
+          r.barcode = barcode || scannedBarcode || null;
           r.updatedAt = new Date();
         });
       } else {
@@ -141,9 +197,20 @@ export function ItemFormScreen() {
           r.notes = notes.trim() || null;
           r.latitude = latitude;
           r.longitude = longitude;
+          r.barcode = barcode || scannedBarcode || null;
           r.createdAt = new Date();
           r.updatedAt = new Date();
         });
+      }
+      if (scannedBarcode) {
+        const templates = database.get<ItemTemplate>('item_templates');
+        await templates.create((r) => {
+          r.name = name.trim();
+          r.category = category;
+          r.weightGrams = w;
+          r.barcode = scannedBarcode;
+        });
+        setScannedBarcode(null);
       }
     });
     navigation.goBack();
@@ -172,9 +239,7 @@ export function ItemFormScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.iconBtn}
-          onPress={() => {
-            /* Barcode scanner placeholder - will be implemented later */
-          }}
+          onPress={() => setBarcodeScannerVisible(true)}
         >
           <Ionicons name="barcode-outline" size={24} color={tactical.amber} />
         </TouchableOpacity>
@@ -183,6 +248,11 @@ export function ItemFormScreen() {
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
         onSelect={handleTemplateSelect}
+      />
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onScan={handleBarcodeScan}
       />
       <Text style={tacticalStyles.label}>Category</Text>
       <View style={tacticalStyles.row}>
@@ -248,6 +318,20 @@ export function ItemFormScreen() {
       )}
       <Text style={tacticalStyles.label}>Weight (g)</Text>
       <TextInput style={tacticalStyles.input} value={weightGrams} onChangeText={setWeightGrams} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#666" />
+      {(barcode || scannedBarcode) && (
+        <View style={styles.barcodeRow}>
+          <Text style={tacticalStyles.label}>Barcode</Text>
+          <View style={styles.barcodeDisplayRow}>
+            <Text style={styles.barcodeText}>{barcode || scannedBarcode}</Text>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setBarcodeScannerVisible(true)}
+            >
+              <Ionicons name="scan" size={20} color={tactical.amber} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
       <Text style={tacticalStyles.label}>Calories</Text>
       <TextInput style={tacticalStyles.input} value={calories} onChangeText={setCalories} keyboardType="decimal-pad" placeholder="Optional" placeholderTextColor="#666" />
       <Text style={tacticalStyles.label}>Condition</Text>
@@ -275,7 +359,7 @@ export function ItemFormScreen() {
         <TouchableOpacity
           style={[tacticalStyles.btnPrimary, styles.tagBtn]}
           onPress={handleTagLocation}
-          disabled={!itemId || taggingLocation}
+          disabled={taggingLocation}
         >
           {taggingLocation ? (
             <ActivityIndicator size="small" color={tactical.black} />
@@ -348,4 +432,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   notesInput: { minHeight: 80, textAlignVertical: 'top' },
+  barcodeRow: { marginBottom: 16 },
+  barcodeDisplayRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  barcodeText: { color: tactical.zinc[400], fontSize: 14, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', flex: 1 },
 });

@@ -12,7 +12,7 @@ import { MissionPrepScreen } from '../../features/inventory/screens/MissionPrepS
 
 export type InventoryStackParamList = {
   KitList: undefined;
-  KitDetail: { kitId: string };
+  KitDetail: { kitId: string; highlightedItemId?: string };
   KitForm: { kitId: string };
   ItemForm: { kitId: string; itemId?: string };
   MissionPrep: undefined;
