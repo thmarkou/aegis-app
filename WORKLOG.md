@@ -334,9 +334,9 @@
 
 ---
 
-## 2026-04-01 (Τετάρτη) – Tactical COMMS / APRS, Modem & Polish
+## 2026-04-01 (Τετάρτη) – Tactical COMMS / APRS · Centralized Inventory Pool & Mission Planner
 
-### Στόχος
+### Στόχος (COMMS)
 Ενοποίηση λειτουργιών Tactical Comms (χάρτης, τηλεμετρία, digipeaters, SMSGTE, AX.25) και τελική polish μετά από επιτυχή acoustic loopback decode.
 
 ### APRS & Modem
@@ -361,14 +361,7 @@
 - `DecodedPacketRouter` + `useDigipeaterStore` όταν το source ταιριάζει με callsign/SSID χρήστη.
 - `secureSettings`: `emergencySmsNumber`, `loopbackDecodeMode`.
 
-### Git
-- Ενημέρωση `WORKLOG.md` και push στο GitHub (2026-04-01).
-
----
-
-## 2026-04-02 (Πέμπτη) – Centralized Inventory Pool, Dynamic Mission Planner, Templates
-
-### Στόχος
+### Στόχος (Inventory & Mission)
 Αποθήκη ειδών ανεξάρτητη από kits, σύνδεση kit ↔ pool μέσω γραμμών pack, σύμβουλος αποστολής με προσαρμοσίσιμα presets, και μεταφορά διαχείρισης templates από Settings στο Global Inventory Pool.
 
 ### Database (schema v13 → v14)
@@ -397,7 +390,7 @@
 - `App.tsx`: `seedBugOutKit`, `seedMissionPresets` μετά το DB init.
 
 ### Git
-- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub.
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-01).
 
 ---
 
