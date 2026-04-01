@@ -369,13 +369,18 @@ export function ItemFormScreen() {
           <Text style={[tacticalStyles.btnPrimaryText, { marginLeft: 8 }]}>Tag Current Location</Text>
         </TouchableOpacity>
         {hasLocation && (
-          <TouchableOpacity
-            style={[tacticalStyles.btnSecondary, styles.viewMapBtn]}
-            onPress={handleViewOnMap}
-          >
-            <Ionicons name="map-outline" size={20} color="#ffffff" />
-            <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>View on Map</Text>
-          </TouchableOpacity>
+          <View style={styles.locationCoordsRow}>
+            <Text style={styles.locationCoordsText}>
+              LAT {latitude!.toFixed(5)} · LON {longitude!.toFixed(5)}
+            </Text>
+            <TouchableOpacity
+              style={[tacticalStyles.btnSecondary, styles.viewMapBtn]}
+              onPress={handleViewOnMap}
+            >
+              <Ionicons name="map-outline" size={20} color="#ffffff" />
+              <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>View on Map</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
       <Text style={tacticalStyles.label}>Notes</Text>
@@ -423,6 +428,13 @@ const styles = StyleSheet.create({
   datePickerWrap: { marginBottom: 16 },
   datePickerDone: { marginTop: 12 },
   locationRow: { flexDirection: 'column', gap: 12, marginBottom: 16 },
+  locationCoordsRow: { flexDirection: 'column', gap: 8 },
+  locationCoordsText: {
+    color: tactical.zinc[400],
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    letterSpacing: 1,
+  },
   tagBtn: { flexDirection: 'row', alignItems: 'center' },
   viewMapBtn: { flexDirection: 'row', alignItems: 'center' },
   switchRow: {

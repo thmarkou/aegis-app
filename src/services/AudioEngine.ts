@@ -7,6 +7,15 @@
 import { Buffer } from 'buffer';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import { buildAx25FrameBits } from './Ax25FrameBuilder';
+import * as SecureSettings from '../shared/services/secureSettings';
+import { startMicDecodeForPlayback, stopMicDecodeAfterPlayback } from './modemMicLoopback';
+
+const MIC_LOOPBACK_TAIL_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const SAMPLE_RATE = 44100;
 const BAUD_RATE = 1200;
@@ -107,13 +116,44 @@ function createWavBuffer(pcmSamples: Int16Array): ArrayBuffer {
   return buffer;
 }
 
+export type AfskFromBitsOptions = {
+  /** Loopback uses higher amplitude; transmit matches RF/cable output levels. */
+  amplitudeMode?: 'loopback' | 'transmit';
+  digitalGain?: number;
+};
+
+function parseSourceForAx25(packet: string): { callsign: string; ssid: number } | null {
+  const colonIdx = packet.indexOf(':');
+  if (colonIdx < 0) return null;
+  const header = packet.slice(0, colonIdx);
+  const gt = header.indexOf('>');
+  if (gt < 0) return null;
+  const src = header.slice(0, gt);
+  const m = src.match(/^([A-Z0-9]+)-(\d+)$/i);
+  if (m) return { callsign: m[1].toUpperCase(), ssid: parseInt(m[2], 10) };
+  const m2 = src.match(/^([A-Z0-9]+)$/i);
+  if (m2) return { callsign: m2[1].toUpperCase(), ssid: 0 };
+  return null;
+}
+
 /**
  * Generates raw PCM (16-bit mono, 44100 Hz) from bit array.
- * Used for AX.25 loopback – bits are already stuffed and NRZI-encoded.
- * Uses LOOPBACK_AMPLITUDE (90%) so decoder can reliably detect the signal.
- * skipPtt: omit preamble for internal loopback – decoder gets data immediately.
+ * Used for AX.25 – bits are already stuffed and NRZI-encoded.
+ * skipPtt: omit leading silence for internal loopback – decoder gets data immediately.
  */
-export function generateAFSKPcmFromBits(bits: number[], skipPtt = false, txDelayMs = 500): Int16Array {
+export function generateAFSKPcmFromBits(
+  bits: number[],
+  skipPtt = false,
+  txDelayMs = 500,
+  options?: AfskFromBitsOptions
+): Int16Array {
+  const amplitudeMode = options?.amplitudeMode ?? 'loopback';
+  const digitalGain = options?.digitalGain ?? 1.0;
+  const toneAmplitude =
+    amplitudeMode === 'transmit'
+      ? AMPLITUDE * Math.max(0.5, Math.min(1.5, digitalGain))
+      : LOOPBACK_AMPLITUDE;
+
   const pttSamples = skipPtt ? 0 : Math.round((txDelayMs / 1000) * SAMPLE_RATE);
   const postSamples = Math.round((POST_DELAY_MS / 1000) * SAMPLE_RATE);
 
@@ -129,7 +169,7 @@ export function generateAFSKPcmFromBits(bits: number[], skipPtt = false, txDelay
   let phase = 0;
   for (const bit of bits) {
     const freq = bit ? MARK_FREQ : SPACE_FREQ;
-    const { samples, endPhase } = generateTone(freq, SAMPLES_PER_BIT, phase, LOOPBACK_AMPLITUDE);
+    const { samples, endPhase } = generateTone(freq, SAMPLES_PER_BIT, phase, toneAmplitude);
     phase = endPhase;
     for (let i = 0; i < samples.length; i++) {
       pcm[offset++] = samples[i];
@@ -157,7 +197,7 @@ export function generateAFSKPcm(
   packetString: string,
   options: TransmitAudioOptions = {}
 ): Int16Array {
-  const { txDelayMs = 300, digitalGain = 1.0 } = options;
+  const { txDelayMs = SecureSettings.TX_DELAY_DEFAULT_MS, digitalGain = 1.0 } = options;
   const bits = stringToBits(packetString);
   const preambleSamples = Math.round((txDelayMs / 1000) * SAMPLE_RATE);
   const postSamples = Math.round((POST_DELAY_MS / 1000) * SAMPLE_RATE);
@@ -235,8 +275,10 @@ export async function playAFSKPacket(
   packetString: string,
   options: TransmitAudioOptions & { onWaveform?: (pcm: Int16Array) => void } = {}
 ): Promise<void> {
+  const micLoopback = await SecureSettings.getLoopbackDecodeMode();
+
   await Audio.setAudioModeAsync({
-    allowsRecordingIOS: false,
+    allowsRecordingIOS: micLoopback,
     playsInSilentModeIOS: true,
     staysActiveInBackground: false,
     shouldDuckAndroid: false,
@@ -245,22 +287,45 @@ export async function playAFSKPacket(
     interruptionModeIOS: 1, // DoNotMix
   });
 
-  const { onWaveform, ...opts } = options;
-  const pcm = generateAFSKPcm(packetString, opts);
+  if (micLoopback) {
+    const ok = await startMicDecodeForPlayback();
+    if (!ok) {
+      console.warn('[AEGIS] Loopback decode: microphone capture did not start');
+    }
+  }
+
+  const { onWaveform, txDelayMs = SecureSettings.TX_DELAY_DEFAULT_MS, digitalGain = 1.0 } = options;
+  const src = parseSourceForAx25(packetString);
+  const pcm =
+    src != null
+      ? generateAFSKPcmFromBits(
+          buildAx25FrameBits('APRS', 0, src.callsign, src.ssid, packetString),
+          false,
+          txDelayMs,
+          { amplitudeMode: 'transmit', digitalGain }
+        )
+      : generateAFSKPcm(packetString, { txDelayMs, digitalGain });
   onWaveform?.(pcm);
 
   const wavBuffer = createWavBuffer(pcm);
   const uri = await writeWavToFile(wavBuffer);
 
-  const { sound } = await Audio.Sound.createAsync({ uri });
-  await sound.setVolumeAsync(1.0);
-  await sound.playAsync();
-  await new Promise<void>((resolve) => {
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish && !status.isLooping) {
-        resolve();
-      }
+  try {
+    const { sound } = await Audio.Sound.createAsync({ uri });
+    await sound.setVolumeAsync(1.0);
+    await sound.playAsync();
+    await new Promise<void>((resolve) => {
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish && !status.isLooping) {
+          resolve();
+        }
+      });
     });
-  });
-  await sound.unloadAsync();
+    await sound.unloadAsync();
+  } finally {
+    if (micLoopback) {
+      await sleep(MIC_LOOPBACK_TAIL_MS);
+      stopMicDecodeAfterPlayback();
+    }
+  }
 }

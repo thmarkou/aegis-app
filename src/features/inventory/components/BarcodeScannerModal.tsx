@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tactical } from '../../../shared/tacticalStyles';
 
@@ -53,6 +54,7 @@ export function BarcodeScannerModal({ visible, onClose, onScan }: Props) {
   const handleBarCodeScanned = ({ data, type }: { data: string; type?: string }) => {
     if (scanned) return;
     setScanned(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onScan({ barcode: data, type });
     onClose();
   };
@@ -64,13 +66,21 @@ export function BarcodeScannerModal({ visible, onClose, onScan }: Props) {
           <CameraView
             style={StyleSheet.absoluteFill}
             facing="back"
+            autofocus="on"
             barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'qr'],
+              barcodeTypes: ['ean13', 'ean8', 'upc_a'],
             }}
             onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
           />
-          <View style={styles.scanFrame} />
-          <Text style={styles.hint}>Align barcode within frame</Text>
+          <View style={styles.targetOverlay} pointerEvents="none">
+            <View style={styles.targetFrame}>
+              <View style={[styles.targetCorner, styles.targetTopLeft]} />
+              <View style={[styles.targetCorner, styles.targetTopRight]} />
+              <View style={[styles.targetCorner, styles.targetBottomLeft]} />
+              <View style={[styles.targetCorner, styles.targetBottomRight]} />
+            </View>
+          </View>
+          <Text style={styles.hint}>Align barcode within target</Text>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
@@ -92,15 +102,46 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
-  scanFrame: {
-    position: 'absolute',
-    left: '15%',
-    right: '15%',
-    top: '35%',
+  targetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  targetFrame: {
+    width: 220,
     height: 120,
-    borderWidth: 2,
+    position: 'relative',
+  },
+  targetCorner: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
     borderColor: tactical.amber,
-    borderRadius: 8,
+    borderWidth: 3,
+  },
+  targetTopLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+  },
+  targetTopRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+  },
+  targetBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+  },
+  targetBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
   },
   hint: {
     position: 'absolute',

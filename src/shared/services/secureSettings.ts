@@ -21,6 +21,10 @@ const KEYS = {
   testMode: 'aegis_test_mode',
   txDelayMs: 'aegis_tx_delay_ms',
   digitalGain: 'aegis_digital_gain',
+  /** E.164 for SMSGTE gateway, e.g. +306912345678 */
+  emergencySmsNumber: 'aegis_emergency_sms_number',
+  /** Decode transmitted AFSK via mic (acoustic loopback) for modem tests */
+  loopbackDecodeMode: 'aegis_loopback_decode',
 } as const;
 
 const DEFAULTS = {
@@ -188,7 +192,7 @@ export async function setGarminLinked(linked: boolean): Promise<void> {
 
 export const TX_DELAY_MIN_MS = 100;
 export const TX_DELAY_MAX_MS = 1000;
-export const TX_DELAY_DEFAULT_MS = 300;
+export const TX_DELAY_DEFAULT_MS = 500;
 export const DIGITAL_GAIN_MIN = 0.5;
 export const DIGITAL_GAIN_MAX = 1.5;
 export const DIGITAL_GAIN_DEFAULT = 1.0;
@@ -213,6 +217,31 @@ export async function getDigitalGain(): Promise<number> {
 export async function setDigitalGain(gain: number): Promise<void> {
   const clamped = Math.max(DIGITAL_GAIN_MIN, Math.min(DIGITAL_GAIN_MAX, Math.round(gain * 100) / 100));
   await SecureStore.setItemAsync(KEYS.digitalGain, String(clamped));
+}
+
+export async function getEmergencySmsNumber(): Promise<string | null> {
+  const v = await SecureStore.getItemAsync(KEYS.emergencySmsNumber);
+  const t = v?.trim();
+  return t ? t : null;
+}
+
+/** E.164 digits with optional leading + */
+export async function setEmergencySmsNumber(phone: string | null): Promise<void> {
+  if (phone == null || !phone.trim()) {
+    await SecureStore.deleteItemAsync(KEYS.emergencySmsNumber);
+    return;
+  }
+  const normalized = phone.trim().replace(/\s/g, '');
+  await SecureStore.setItemAsync(KEYS.emergencySmsNumber, normalized);
+}
+
+export async function getLoopbackDecodeMode(): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(KEYS.loopbackDecodeMode);
+  return v === 'true';
+}
+
+export async function setLoopbackDecodeMode(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.loopbackDecodeMode, enabled ? 'true' : 'false');
 }
 
 export async function getGpsUpdateIntervalMs(): Promise<number> {

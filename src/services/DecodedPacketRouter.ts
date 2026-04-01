@@ -7,6 +7,8 @@ import { database } from '../database';
 import type MessageLog from '../database/models/MessageLog';
 import type IncomingStation from '../database/models/IncomingStation';
 import { parseAprsPacket } from './AprsPacketParser';
+import * as SecureSettings from '../shared/services/secureSettings';
+import { useDigipeaterStore } from '../shared/store/useDigipeaterStore';
 
 export type PacketRouterCallbacks = {
   onIncomingMessage?: (message: string, source: string) => void;
@@ -60,6 +62,17 @@ export async function routeDecodedPacket(rawPacket: string): Promise<void> {
   if (!parsed) return;
 
   try {
+    const [ourCallsign, ourSsid] = await Promise.all([
+      SecureSettings.getCallsign(),
+      SecureSettings.getSsid(),
+    ]);
+    if (
+      parsed.sourceCallsign.toUpperCase() === ourCallsign.toUpperCase() &&
+      parsed.sourceSsid === ourSsid &&
+      parsed.digipeaters.length > 0
+    ) {
+      useDigipeaterStore.getState().recordFromOurPacketPath(parsed.digipeaters);
+    }
     if (parsed.payloadType === 'position' && parsed.position) {
       await upsertIncomingStation(
         parsed.sourceCallsign,

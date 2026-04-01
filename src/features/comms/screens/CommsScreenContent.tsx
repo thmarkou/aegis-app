@@ -10,14 +10,17 @@ import {
   TouchableOpacity,
   StyleSheet,
   Switch,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { setPacketRouterCallbacks } from '../../../services/DecodedPacketRouter';
 import { runDirectTest } from '../../../services/LoopbackTestService';
-import { sendBeaconWithUserGps } from '../../../services/BeaconService';
+import { sendBeaconWithUserGps, sendEmergencySmsgte } from '../../../services/BeaconService';
 import { database } from '../../../database';
 import { WaveformMonitor } from '../components/WaveformMonitor';
+import { DigipeaterLog } from '../components/DigipeaterLog';
 import type MessageLog from '../../../database/models/MessageLog';
+import { useGarminStore } from '../../../shared/store/useGarminStore';
 
 const AMBER = '#FFBF00';
 const BLACK = '#000000';
@@ -40,8 +43,11 @@ const BOX = {
   marginBottom: 16,
 };
 
+type TabNavigate = { navigate: (name: string, params?: object) => void };
+
 export function CommsScreenContent() {
-  const navigation = useNavigation();
+  const navigation = useNavigation() as TabNavigate;
+  const heartRate = useGarminStore((s) => s.heartRate ?? s.cachedHeartRate);
   const [mode, setMode] = useState<'RADIO' | 'MESSAGING'>('RADIO');
   const [telemetry, setTelemetry] = useState({ station: '—', lat: '—', lon: '—', time: '—' });
   const [lastPacket, setLastPacket] = useState<string>('');
@@ -80,6 +86,27 @@ export function CommsScreenContent() {
     if (messageDraft.trim()) setMessageDraft('');
   };
 
+  const handleOpenAprsMap = () => {
+    navigation.navigate('Map', { focusOnNewStation: true, centerOnUser: true });
+  };
+
+  const handleSosSmsgte = async () => {
+    setWaveformPcm(null);
+    const msg =
+      mode === 'MESSAGING' && messageDraft.trim()
+        ? messageDraft.trim()
+        : 'SOS AEGIS EMERGENCY — need assistance';
+    const result = await sendEmergencySmsgte(msg, {
+      onWaveform: (pcm) => setWaveformPcm(pcm),
+    });
+    if (result.success) {
+      setLastPacket(result.packet);
+      Alert.alert('SMSGTE', 'APRS audio queued. Confirm SMS on the gateway contact phone.');
+    } else {
+      Alert.alert('SMSGTE failed', result.error);
+    }
+  };
+
   const handleSendBeacon = async () => {
     setWaveformPcm(null);
     const result = await sendBeaconWithUserGps({
@@ -87,7 +114,7 @@ export function CommsScreenContent() {
     });
     if (result.success) {
       setLastPacket(result.packet);
-      navigation.navigate('Map' as never, { focusOnNewStation: true } as never);
+      navigation.navigate('Map', { focusOnNewStation: true });
     }
   };
 
@@ -99,7 +126,7 @@ export function CommsScreenContent() {
           ? { station: 'TAKTICAL-1', lat: '37.97150', lon: '23.72570', time: new Date().toISOString() }
           : prev
       );
-      navigation.navigate('Map' as never, { focusOnNewStation: true } as never);
+      navigation.navigate('Map', { focusOnNewStation: true });
     }
   };
 
@@ -124,9 +151,20 @@ export function CommsScreenContent() {
 
       {mode === 'RADIO' ? (
         <>
+          <View style={styles.quickActionsRow}>
+            <TouchableOpacity style={styles.mapQuickBtn} onPress={handleOpenAprsMap} activeOpacity={0.8}>
+              <Text style={styles.mapQuickBtnText}>APRS MAP</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sosQuickBtn} onPress={handleSosSmsgte} activeOpacity={0.8}>
+              <Text style={styles.sosQuickBtnText}>SOS → SMSGTE</Text>
+            </TouchableOpacity>
+          </View>
           {/* RADIO Mode: LINK status, SEND BEACON, Last Packet */}
           <View style={styles.box}>
             <Text style={styles.telemetryLabel}>LINK: VOX/ANALOG</Text>
+            {heartRate != null && (
+              <Text style={styles.telemetryLabel}>HR (Health): {heartRate} — included in beacon</Text>
+            )}
           </View>
           <TouchableOpacity style={styles.sendBeaconBtn} onPress={handleSendBeacon} activeOpacity={0.8}>
             <Text style={styles.sendBeaconText}>SEND BEACON</Text>
@@ -138,9 +176,18 @@ export function CommsScreenContent() {
               {lastPacket || '—'}
             </Text>
           </View>
+          <DigipeaterLog />
         </>
       ) : (
         <>
+          <View style={styles.quickActionsRow}>
+            <TouchableOpacity style={styles.mapQuickBtn} onPress={handleOpenAprsMap} activeOpacity={0.8}>
+              <Text style={styles.mapQuickBtnText}>APRS MAP</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sosQuickBtn} onPress={handleSosSmsgte} activeOpacity={0.8}>
+              <Text style={styles.sosQuickBtnText}>SOS → SMSGTE</Text>
+            </TouchableOpacity>
+          </View>
           {/* MESSAGING Mode */}
           <View style={styles.box}>
             <Text style={styles.telemetryLabel}>STATION: {telemetry.station}</Text>
@@ -243,6 +290,31 @@ const styles = StyleSheet.create({
   },
   modeLabel: { color: ZINC_500, fontSize: 14, fontWeight: '600' },
   modeLabelActive: { color: AMBER },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  mapQuickBtn: {
+    flex: 1,
+    backgroundColor: ZINC_900,
+    borderWidth: 1,
+    borderColor: ZINC_700,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  mapQuickBtnText: { color: AMBER, fontSize: 13, fontWeight: '700' },
+  sosQuickBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(127, 29, 29, 0.45)',
+    borderWidth: 1,
+    borderColor: AMBER,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  sosQuickBtnText: { color: '#fecaca', fontSize: 13, fontWeight: '800' },
   box: { ...BOX },
   telemetryLabel: { color: AMBER, fontSize: 14, marginBottom: 4 },
   sectionLabel: { color: AMBER, fontSize: 12, marginBottom: 8, marginTop: 4 },

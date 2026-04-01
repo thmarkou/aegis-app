@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Platform, Animated } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Platform, Animated, TextInput, Easing } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { useWeightWarning } from '../hooks/useWeightWarning';
 import { BlinkingAmberWarning } from '../components/BlinkingAmberWarning';
 import { BlinkingRedWarning } from '../components/BlinkingRedWarning';
+import { BarcodeScannerModal, type BarcodeScanResult } from '../components/BarcodeScannerModal';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 
 const EXPIRY_WARN_DAYS = 30;
@@ -51,6 +52,8 @@ export function KitDetailScreen() {
   const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
   const [weightPercent, setWeightPercent] = useState(20);
   const [sortByExpiry, setSortByExpiry] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
   const highlightOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export function KitDetailScreen() {
       toValue: 0,
       duration: 5000,
       useNativeDriver: true,
+      easing: Easing.out(Easing.ease),
     });
     anim.start();
     const t = setTimeout(() => {
@@ -123,6 +127,19 @@ export function KitDetailScreen() {
         return a.expiryDate - b.expiryDate;
       })
     : items;
+
+  const filteredItems = searchQuery.trim()
+    ? sortedItems.filter(
+        (i) =>
+          i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (i.barcode != null && i.barcode.includes(searchQuery))
+      )
+    : sortedItems;
+
+  const handleBarcodeScanSearch = (result: BarcodeScanResult) => {
+    setSearchQuery(result.barcode);
+    setBarcodeScannerVisible(false);
+  };
 
   const itemsWeightGrams = items.reduce((sum, i) => sum + i.quantity * i.weightGrams, 0);
   const waterLiters = kit?.waterReservoirLiters ?? 0;
@@ -215,8 +232,28 @@ export function KitDetailScreen() {
           </Text>
         )}
       </View>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search items or scan barcode..."
+          placeholderTextColor={tactical.zinc[500]}
+        />
+        <TouchableOpacity
+          style={styles.searchScanBtn}
+          onPress={() => setBarcodeScannerVisible(true)}
+        >
+          <Ionicons name="barcode-outline" size={22} color={tactical.amber} />
+        </TouchableOpacity>
+      </View>
+      <BarcodeScannerModal
+        visible={barcodeScannerVisible}
+        onClose={() => setBarcodeScannerVisible(false)}
+        onScan={handleBarcodeScanSearch}
+      />
       <FlatList
-        data={sortedItems}
+        data={filteredItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const showExpiryWarn = isExpiredOrExpiringSoon(item.expiryDate);
@@ -292,7 +329,11 @@ export function KitDetailScreen() {
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={tacticalStyles.emptyText}>No items. Tap + to add.</Text>}
+        ListEmptyComponent={
+          <Text style={tacticalStyles.emptyText}>
+            {searchQuery.trim() ? 'No items match search.' : 'No items. Tap + to add.'}
+          </Text>
+        }
       />
       <TouchableOpacity style={tacticalStyles.fab} onPress={handleAddItem}>
         <Text style={tacticalStyles.fabText}>+</Text>
@@ -413,6 +454,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 6,
     fontWeight: '600',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: tactical.zinc[900],
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: '#ffffff',
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  searchScanBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: tactical.zinc[900],
+    borderWidth: 1,
+    borderColor: tactical.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   itemCardWrap: {
     marginHorizontal: 16,

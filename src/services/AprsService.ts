@@ -10,6 +10,40 @@ export interface AprsPosition {
   comment?: string;
 }
 
+/** Compact telemetry for APRS comment: AEGIS: HR:85 INV:OK */
+export function buildAegisTelemetryComment(
+  heartRateBpm: number | null | undefined,
+  inventoryStatus: 'OK' | 'WARN' | 'LOW'
+): string {
+  const hr =
+    heartRateBpm != null && heartRateBpm > 0 && heartRateBpm < 300
+      ? String(Math.round(heartRateBpm))
+      : '--';
+  return `AEGIS: HR:${hr} INV:${inventoryStatus}`;
+}
+
+/** Conservative limit for SMS body in SMSGTE/APRS message text. */
+export const SMSGTE_MESSAGE_MAX_LEN = 67;
+
+/**
+ * Joins user text with AEGIS telemetry; shortens the user part first so HR/INV stays on the air.
+ */
+export function buildSmsgteMessageWithTelemetry(
+  userMessage: string,
+  telemetry: string,
+  maxLen = SMSGTE_MESSAGE_MAX_LEN
+): string {
+  const tel = telemetry.trim();
+  const user = userMessage.trim();
+  if (!tel) return user.slice(0, maxLen);
+  if (!user) return tel.slice(0, maxLen);
+  const sep = ' ';
+  const roomForUser = maxLen - tel.length - sep.length;
+  if (roomForUser <= 0) return tel.slice(0, maxLen);
+  const userPart = user.slice(0, Math.max(0, roomForUser));
+  return `${userPart}${sep}${tel}`.slice(0, maxLen);
+}
+
 /**
  * Converts decimal degrees to APRS format: ddmm.hhN/S or dddmm.hhE/W
  */

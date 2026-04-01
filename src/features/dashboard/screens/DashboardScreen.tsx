@@ -18,6 +18,7 @@ import { useDashboardData } from '../hooks/useDashboardData';
 import { bearingToCardinal } from '../../../shared/utils/geoUtils';
 import { useGarminStore } from '../../../shared/store/useGarminStore';
 import { requestHealthPermissions, refreshHealthData, retryHealthConnection } from '../../../shared/services/GarminSyncService';
+import { CACHE_TTL_MS } from '../../../shared/store/useGarminStore';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { useAppStore } from '../../../shared/store/useAppStore';
 import { sendEmergencyBroadcast, cancelEmergencyBroadcast } from '../../../services/EmergencyService';
@@ -108,19 +109,33 @@ function StatusBadge({
 
 const DEFAULT_MAX_HR = 190;
 
+type EffortZone = 'LIGHT' | 'MODERATE' | 'HIGH';
+
 function computeEffort(
   hr: number | null,
   rhr: number | null,
   maxHr: number | null
-): { value: string; zone?: string } {
-  if (hr == null) return { value: '--' };
+): { value: string; zone?: EffortZone; pct: number } {
+  if (hr == null) return { value: '--', pct: 0 };
   const max = maxHr ?? DEFAULT_MAX_HR;
   const rest = rhr ?? 60;
-  const ratio = Math.max(0, Math.min(1, (hr - rest) / (max - rest)));
-  const pct = Math.round(ratio * 100);
-  const zone =
-    pct < 30 ? 'LIGHT' : pct < 60 ? 'MODERATE' : pct < 85 ? 'HARD' : 'MAX';
-  return { value: `${pct}%`, zone };
+  let pct: number;
+  if (max <= rest) {
+    pct = hr > rest ? 100 : 0;
+  } else {
+    const ratio = (hr - rest) / (max - rest);
+    pct = Math.round(Math.max(0, ratio) * 100);
+  }
+  const zone: EffortZone =
+    pct < 40 ? 'LIGHT' : pct <= 70 ? 'MODERATE' : 'HIGH';
+  return { value: `${pct}%`, zone, pct };
+}
+
+function getEffortColor(zone: EffortZone | undefined): string {
+  if (!zone) return '#FF8C00';
+  if (zone === 'LIGHT') return '#22c55e';
+  if (zone === 'MODERATE') return '#f59e0b';
+  return '#ef4444';
 }
 
 /**
@@ -135,6 +150,10 @@ function BioMetricsSection({
   maxHeartRate,
   garminError,
   onRetry,
+  cachedHeartRate,
+  cachedHeartRateAt,
+  cachedActiveEnergyKcal,
+  cachedActiveEnergyKcalAt,
 }: {
   heartRate: number | null;
   spo2: number | null;
@@ -143,13 +162,36 @@ function BioMetricsSection({
   maxHeartRate: number | null;
   garminError: string | null;
   onRetry: () => void;
+  cachedHeartRate: number | null;
+  cachedHeartRateAt: number | null;
+  cachedActiveEnergyKcal: number | null;
+  cachedActiveEnergyKcalAt: number | null;
 }) {
-  const effort = computeEffort(heartRate, restingHeartRate, maxHeartRate);
-  const hrDisplay = heartRate != null && heartRate > 0 ? `${heartRate} BPM` : '--';
+  const now = Date.now();
+  const hrLive = heartRate != null && heartRate > 0;
+  const hrCached = !hrLive && cachedHeartRate != null && cachedHeartRateAt != null && (now - cachedHeartRateAt) < CACHE_TTL_MS;
+  const hrDisplay = hrLive ? `${heartRate} BPM` : hrCached ? `${cachedHeartRate} BPM` : '--';
+  const hrIsCached = hrCached;
+
+  const kcalLive = activeEnergyKcal != null && activeEnergyKcal > 0;
+  const kcalCached = !kcalLive && cachedActiveEnergyKcal != null && cachedActiveEnergyKcalAt != null && (now - cachedActiveEnergyKcalAt) < CACHE_TTL_MS;
+  const kcalDisplay = kcalLive ? `${activeEnergyKcal} kcal` : kcalCached ? `${cachedActiveEnergyKcal} kcal` : '--';
+  const kcalIsCached = kcalCached;
+
+  const effortHr = hrLive ? heartRate : hrCached ? cachedHeartRate : null;
+  const effort = computeEffort(effortHr, restingHeartRate, maxHeartRate);
   const effortDisplay = effort.value;
   const effortZone = effort.zone ? ` · ${effort.zone}` : '';
-  const kcalDisplay = activeEnergyKcal != null && activeEnergyKcal > 0 ? `${activeEnergyKcal} kcal` : '--';
-  const hasNoData = heartRate == null || heartRate === 0;
+  const effortColor = getEffortColor(effort.zone);
+
+  const hasNoData = !hrLive && !hrCached;
+
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!hrCached && !kcalCached) return;
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [hrCached, kcalCached]);
 
   return (
     <View style={[styles.bioSection, { minHeight: 120 }]} pointerEvents="box-none">
@@ -161,15 +203,17 @@ function BioMetricsSection({
         <View style={styles.bioItem} pointerEvents="none">
           <Ionicons name="heart" size={14} color={tactical.amber} />
           <Text style={styles.bioLabelSm}>BPM</Text>
+          {hrIsCached && <Ionicons name="time-outline" size={12} color={tactical.zinc[500]} style={{ marginLeft: 2 }} />}
           <Text style={[styles.bioValue, (hrDisplay === '--' ? styles.bioValuePlaceholder : styles.bioValueBpmLive)]} selectable={false}>{hrDisplay}</Text>
         </View>
         <View style={styles.bioItem} pointerEvents="none">
-          <Text style={styles.bioLabelSm}>EFFORT</Text>
-          <Text style={[styles.bioValue, effortDisplay === '--' ? styles.bioValuePlaceholder : undefined]} selectable={false}>{effortDisplay}{effortZone}</Text>
+          <Text style={[styles.bioLabelSm, { color: effortDisplay !== '--' ? effortColor : undefined }]}>EFFORT</Text>
+          <Text style={[styles.bioValue, effortDisplay === '--' ? styles.bioValuePlaceholder : undefined, effortDisplay !== '--' && { color: effortColor }]} selectable={false}>{effortDisplay}{effortZone}</Text>
         </View>
         <View style={styles.bioItem} pointerEvents="none">
           <Ionicons name="flame" size={14} color={tactical.amber} />
           <Text style={styles.bioLabelSm}>ACTIVE</Text>
+          {kcalIsCached && <Ionicons name="time-outline" size={12} color={tactical.zinc[500]} style={{ marginLeft: 2 }} />}
           <Text style={[styles.bioValue, kcalDisplay === '--' ? styles.bioValuePlaceholder : undefined]} selectable={false}>{kcalDisplay}</Text>
         </View>
       </View>
@@ -198,10 +242,11 @@ function TelemetryCard({
   subtext?: string;
   glow?: boolean;
 }) {
+  const isPlaceholder = value === '--';
   return (
     <View style={[styles.telemetryCard, glow && styles.telemetryCardGlow]}>
       <Text style={styles.telemetryLabel}>{label}</Text>
-      <Text style={[styles.telemetryValue, glow && styles.telemetryValueGlow]}>{value}</Text>
+      <Text style={[styles.telemetryValue, glow && styles.telemetryValueGlow, isPlaceholder && styles.telemetryValuePlaceholder]}>{value}</Text>
       {subtext ? <Text style={styles.telemetrySub}>{subtext}</Text> : null}
     </View>
   );
@@ -224,8 +269,6 @@ export function DashboardScreen() {
 
   const [sosProgress, setSosProgress] = React.useState(0);
   const sosTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const garminBlinkOpacity = useRef(new Animated.Value(1)).current;
-  const prevGarminConnected = useRef(false);
 
   const isGlobalEmergency = useAppStore((s) => s.isGlobalEmergency);
   const garminConnected = useGarminStore((s) => s.connected);
@@ -234,6 +277,10 @@ export function DashboardScreen() {
   const garminRhr = useGarminStore((s) => s.restingHeartRate);
   const garminActiveKcal = useGarminStore((s) => s.activeEnergyKcal);
   const garminError = useGarminStore((s) => s.error);
+  const cachedHeartRate = useGarminStore((s) => s.cachedHeartRate);
+  const cachedHeartRateAt = useGarminStore((s) => s.cachedHeartRateAt);
+  const cachedActiveEnergyKcal = useGarminStore((s) => s.cachedActiveEnergyKcal);
+  const cachedActiveEnergyKcalAt = useGarminStore((s) => s.cachedActiveEnergyKcalAt);
   const [maxHeartRate, setMaxHeartRate] = React.useState<number | null>(null);
   const [appleHealthEnabled, setAppleHealthEnabled] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -245,6 +292,10 @@ export function DashboardScreen() {
     await new Promise((r) => setTimeout(r, 800));
     setRefreshing(false);
   }, [refresh]);
+
+  useEffect(() => {
+    SecureSettings.getMaxHeartRate().then(setMaxHeartRate).catch(() => {});
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -259,21 +310,6 @@ export function DashboardScreen() {
       return () => {};
     }, [refresh])
   );
-
-  useEffect(() => {
-    if (garminConnected && !prevGarminConnected.current) {
-      prevGarminConnected.current = true;
-      Animated.sequence([
-        Animated.timing(garminBlinkOpacity, { toValue: 0.3, duration: 150, useNativeDriver: true }),
-        Animated.timing(garminBlinkOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-        Animated.timing(garminBlinkOpacity, { toValue: 0.3, duration: 150, useNativeDriver: true }),
-        Animated.timing(garminBlinkOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-      ]).start();
-    } else if (!garminConnected) {
-      prevGarminConnected.current = false;
-      garminBlinkOpacity.setValue(1);
-    }
-  }, [garminConnected, garminBlinkOpacity]);
 
   const isReady = readinessScore >= 100;
   const isCompromised = !isReady;
@@ -346,13 +382,6 @@ export function DashboardScreen() {
             <Text style={styles.grantHealthBtnText}>Grant Health Permissions</Text>
           </Pressable>
         )}
-        {garminConnected && !garminError && (
-          <Animated.View style={[styles.garminBadge, { opacity: garminBlinkOpacity }]}>
-            <Text style={styles.garminText}>
-              {garminHeartRate != null ? `HR: ${garminHeartRate} BPM` : 'FNX8_VIA_HEALTH'}
-            </Text>
-          </Animated.View>
-        )}
       </View>
 
       <View style={styles.gaugeSection}>
@@ -417,6 +446,10 @@ export function DashboardScreen() {
             const ok = await retryHealthConnection();
             if (ok) refreshHealthData();
           }}
+          cachedHeartRate={cachedHeartRate}
+          cachedHeartRateAt={cachedHeartRateAt}
+          cachedActiveEnergyKcal={cachedActiveEnergyKcal}
+          cachedActiveEnergyKcalAt={cachedActiveEnergyKcalAt}
         />
       )}
 
@@ -608,6 +641,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  telemetryValuePlaceholder: {
+    color: '#FF8C00',
   },
   telemetryValueGlow: {
     color: tactical.amber,

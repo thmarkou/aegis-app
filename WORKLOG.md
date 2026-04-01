@@ -334,6 +334,38 @@
 
 ---
 
+## 2026-04-01 (Τετάρτη) – Tactical COMMS / APRS, Modem & Polish
+
+### Στόχος
+Ενοποίηση λειτουργιών Tactical Comms (χάρτης, τηλεμετρία, digipeaters, SMSGTE, AX.25) και τελική polish μετά από επιτυχή acoustic loopback decode.
+
+### APRS & Modem
+- **Θέση beacon**: `buildAegisTelemetryComment` – `AEGIS: HR:… INV:OK` από Apple Health (live/cached) και `getInventoryAprsStatus()` (OK/WARN/LOW).
+- **TX AX.25**: `playAFSKPacket` → `buildAx25FrameBits` + `generateAFSKPcmFromBits` (preamble flags, FCS, NRZI) – fallback 8N1 αν αποτύχει parse header.
+- **Loopback decode (mic)**: ρύθμιση στο Settings – κατά την αναπαραγωγή AFSK ανοίγει μικρόφωνο → `DecoderService` → `routeDecodedPacket` (`modemMicLoopback.ts`, `AudioEngine`).
+- **Προεπιλογή TX Delay**: **500 ms** (από 300 ms) για VOX/ραδιόφωνα – `TX_DELAY_DEFAULT_MS`, sliders/AudioEngine defaults.
+
+### COMMS UI
+- **APRS MAP** / **SOS → SMSGTE**, κύμα (`WaveformMonitor`).
+- **RECENT DIGIPEATERS** στο κάτω μέρος της οθόνης RADIO – λίστα τελευταίων μοναδικών digi στο path όταν το δικό σου callsign εμφανίζεται με WIDE/path.
+- **Pulse animation**: μαλακό πράσινο (`#86efac`) στον τίτλο όταν προστίθεται νέο μοναδικό digi (`Animated`, `DigipeaterLog`).
+
+### Settings
+- **Emergency SMS** (E.164) για SMSGTE.
+- **Loopback decode (mic)** switch + επεξήγηση.
+- **APRS debug**: «Simulate received APRS» με path `WIDE1-1`, `WIDE2-1` (`simulateAprsPacket.ts`) για έλεγχο λίστας digi.
+- **SMSGTE SOS**: το κείμενο προς αποστολή περιλαμβάνει και **βιομετρικά + inventory** όπως το beacon (`buildSmsgteMessageWithTelemetry`, όριο 67 χαρακτήρων με προτεραιότητα στο `AEGIS: HR:… INV:…`).
+
+### Backend / Router
+- `AprsPacketParser`: path, `extractDigipeatersFromPath`.
+- `DecodedPacketRouter` + `useDigipeaterStore` όταν το source ταιριάζει με callsign/SSID χρήστη.
+- `secureSettings`: `emergencySmsNumber`, `loopbackDecodeMode`.
+
+### Git
+- Ενημέρωση `WORKLOG.md` και push στο GitHub (2026-04-01).
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

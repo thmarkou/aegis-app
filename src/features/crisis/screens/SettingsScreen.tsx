@@ -13,6 +13,7 @@ import {
   } from '../../../shared/services/GarminSyncService';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { getCacheSizeBytes, clearCache } from '../../map/services/TileCacheService';
+import { simulateOwnPacketWithDigipeaterPath } from '../../../services/simulateAprsPacket';
 
 type Nav = NativeStackNavigationProp<SettingsStackParamList>;
 
@@ -26,12 +27,16 @@ export function SettingsScreen() {
   const [maxHeartRate, setMaxHeartRate] = useState('');
   const [callsign, setCallsign] = useState('SY2EYH');
   const [ssid, setSsid] = useState('7');
+  const [emergencySms, setEmergencySms] = useState('');
   const [newPin, setNewPin] = useState('');
   const [cacheSizeMb, setCacheSizeMb] = useState<string>('—');
   const [sortByExpiry, setSortByExpiry] = useState(false);
-  const [txDelayMs, setTxDelayMs] = useState(300);
+  const [txDelayMs, setTxDelayMs] = useState(SecureSettings.TX_DELAY_DEFAULT_MS);
   const [digitalGain, setDigitalGain] = useState(1.0);
   const [appleHealthEnabled, setAppleHealthEnabled] = useState(false);
+  const [loopbackDecodeMode, setLoopbackDecodeMode] = useState(false);
+  const [testMode, setTestMode] = useState(false);
+  const [showAprsDebug, setShowAprsDebug] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -53,7 +58,10 @@ export function SettingsScreen() {
       SecureSettings.getSortByExpiry(),
       SecureSettings.getTxDelayMs(),
       SecureSettings.getDigitalGain(),
-    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain]) => {
+      SecureSettings.getEmergencySmsNumber(),
+      SecureSettings.getLoopbackDecodeMode(),
+      SecureSettings.getTestMode(),
+    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test]) => {
       setExpiryDays(String(d));
       setWeightPercent(String(p));
       setBodyWeightKg(bw != null ? String(bw) : '');
@@ -63,6 +71,9 @@ export function SettingsScreen() {
       setSortByExpiry(sort);
       setTxDelayMs(tx);
       setDigitalGain(gain);
+      setEmergencySms(emergency ?? '');
+      setLoopbackDecodeMode(loopback);
+      setTestMode(test);
     });
   }, []);
 
@@ -222,6 +233,68 @@ export function SettingsScreen() {
         />
         <Text style={{ color: tactical.zinc[500], fontSize: 14 }}>(0–15)</Text>
       </View>
+      <Text style={tacticalStyles.sectionDesc}>
+        E.164 number for SMSGTE SOS from COMMS (e.g. +306912345678).
+      </Text>
+      <View style={tacticalStyles.rowInline}>
+        <Text style={[tacticalStyles.label, { marginBottom: 0 }]}>Emergency SMS</Text>
+        <TextInput
+          style={[tacticalStyles.inputSmall, { flex: 1, maxWidth: 220 }]}
+          value={emergencySms}
+          onChangeText={setEmergencySms}
+          onBlur={async () => await SecureSettings.setEmergencySmsNumber(emergencySms)}
+          placeholder="+30…"
+          placeholderTextColor="#666"
+          keyboardType="phone-pad"
+        />
+      </View>
+      <View style={[tacticalStyles.rowInline, { justifyContent: 'space-between', marginTop: 12 }]}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={tacticalStyles.label}>Loopback decode (mic)</Text>
+          <Text style={[tacticalStyles.sectionDesc, { marginBottom: 0, marginTop: 4 }]}>
+            When ON, TX plays AFSK and the microphone listens so you can test decode without a cable (use speaker
+            volume; unreliable on some devices).
+          </Text>
+        </View>
+        <Switch
+          value={loopbackDecodeMode}
+          onValueChange={async (v) => {
+            setLoopbackDecodeMode(v);
+            await SecureSettings.setLoopbackDecodeMode(v);
+          }}
+          trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
+          thumbColor={loopbackDecodeMode ? tactical.black : tactical.zinc[400]}
+        />
+      </View>
+
+      <TouchableOpacity
+        onPress={() => setShowAprsDebug((x) => !x)}
+        activeOpacity={0.7}
+        style={{ marginTop: 8, marginBottom: 4 }}
+      >
+        <Text style={[tacticalStyles.sectionDesc, { color: tactical.zinc[500], fontSize: 12 }]}>
+          APRS debug tools {showAprsDebug ? '▼' : '▶'}
+        </Text>
+      </TouchableOpacity>
+      {(showAprsDebug || testMode) && (
+        <TouchableOpacity
+          style={[styles.debugSimulateBtn, testMode && styles.debugSimulateBtnTestMode]}
+          onPress={async () => {
+            try {
+              await simulateOwnPacketWithDigipeaterPath();
+              Alert.alert(
+                'Simulated packet',
+                'Injected a position report with path WIDE1-1, WIDE2-1. Open COMMS → RADIO and scroll to RECENT DIGIPEATERS.'
+              );
+            } catch (e) {
+              Alert.alert('Simulate failed', e instanceof Error ? e.message : 'Unknown error');
+            }
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.debugSimulateText}>Simulate received APRS (path test)</Text>
+        </TouchableOpacity>
+      )}
 
       <Text style={tacticalStyles.sectionTitle}>Audio Calibration</Text>
       <Text style={tacticalStyles.sectionDesc}>
@@ -445,5 +518,23 @@ const styles = StyleSheet.create({
     color: tactical.amber,
     fontSize: 18,
     fontWeight: '700',
+  },
+  debugSimulateBtn: {
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: tactical.zinc[900],
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+  },
+  debugSimulateBtnTestMode: {
+    borderColor: 'rgba(255, 191, 0, 0.35)',
+  },
+  debugSimulateText: {
+    color: tactical.zinc[500],
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });

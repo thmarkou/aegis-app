@@ -6,11 +6,35 @@
 export type ParsedAprsPacket = {
   sourceCallsign: string;
   sourceSsid: number;
+  /** Raw path after `>`, e.g. `APRS,WIDE1-1,WIDE2-1` */
+  pathSegment: string;
+  /** Digipeater / path tokens (excludes leading APRS unproto when present). */
+  digipeaters: string[];
   payloadType: 'position' | 'message' | 'status' | 'unknown';
   position?: { lat: number; lon: number; altitude?: number; comment?: string };
   message?: string;
   rawPayload: string;
 };
+
+/**
+ * Path tokens from APRS header: SRC>APRS,WIDE1*,WIDE2-1:
+ * Returns human-readable digi names (trailing * stripped).
+ */
+export function extractDigipeatersFromPath(pathSegment: string): string[] {
+  const parts = pathSegment
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  let i = 0;
+  if (parts[0]?.toUpperCase() === 'APRS') i = 1;
+  for (; i < parts.length; i++) {
+    let t = parts[i];
+    if (t.endsWith('*')) t = t.slice(0, -1);
+    if (t) out.push(t);
+  }
+  return out;
+}
 
 /**
  * Parse APRS position format: !ddmm.hhN/dddmm.mmW or =ddmm.hhN/dddmm.mmW
@@ -62,6 +86,10 @@ export function parseAprsPacket(packet: string): ParsedAprsPacket | null {
   const header = packet.slice(0, colonIdx);
   const payload = packet.slice(colonIdx + 1).trim();
 
+  const gtIdx = header.indexOf('>');
+  const pathSegment = gtIdx >= 0 ? header.slice(gtIdx + 1) : '';
+  const digipeaters = extractDigipeatersFromPath(pathSegment);
+
   const srcPart = header.split('>')[0];
   if (!srcPart) return null;
 
@@ -86,6 +114,8 @@ export function parseAprsPacket(packet: string): ParsedAprsPacket | null {
       return {
         sourceCallsign,
         sourceSsid,
+        pathSegment,
+        digipeaters,
         payloadType: 'position',
         position,
         rawPayload: payload,
@@ -98,6 +128,8 @@ export function parseAprsPacket(packet: string): ParsedAprsPacket | null {
     return {
       sourceCallsign,
       sourceSsid,
+      pathSegment,
+      digipeaters,
       payloadType: 'status',
       message: payload.slice(1).trim(),
       rawPayload: payload,
@@ -108,6 +140,8 @@ export function parseAprsPacket(packet: string): ParsedAprsPacket | null {
   return {
     sourceCallsign,
     sourceSsid,
+    pathSegment,
+    digipeaters,
     payloadType: 'message',
     message: payload,
     rawPayload: payload,

@@ -10,7 +10,7 @@ import { useGarminStore } from '../store/useGarminStore';
 import { Platform } from 'react-native';
 
 const HR_POLL_INTERVAL_MS = 5000;
-const FULL_POLL_INTERVAL_MS = 20000;
+const FULL_POLL_INTERVAL_MS = 5000;
 
 // react-native-health exports via module.exports (no default). Use the module directly.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
