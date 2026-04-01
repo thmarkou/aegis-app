@@ -4,20 +4,27 @@
 import { database } from '../database';
 import type PowerDevice from '../database/models/PowerDevice';
 
-export const POWER_STALE_MS = 90 * 24 * 60 * 60 * 1000;
+/** Default window when a row has no `maintenance_cycle_days` (legacy DB). */
+export const DEFAULT_MAINTENANCE_CYCLE_DAYS = 90;
 
 export type PowerAprsStatus = 'OK' | 'LOW';
 
-export function isChargeStale(lastFullChargeAt: number | null, now = Date.now()): boolean {
+export function isChargeStale(
+  lastFullChargeAt: number | null,
+  now: number,
+  maintenanceCycleDays: number | null
+): boolean {
+  const days = maintenanceCycleDays ?? DEFAULT_MAINTENANCE_CYCLE_DAYS;
+  const ms = days * 24 * 60 * 60 * 1000;
   if (lastFullChargeAt == null) return true;
-  return now - lastFullChargeAt > POWER_STALE_MS;
+  return now - lastFullChargeAt > ms;
 }
 
 export async function getPowerAprsStatus(): Promise<PowerAprsStatus> {
   const devices = await database.get<PowerDevice>('power_devices').query().fetch();
   const now = Date.now();
   for (const d of devices) {
-    if (isChargeStale(d.lastFullChargeAt, now)) return 'LOW';
+    if (isChargeStale(d.lastFullChargeAt, now, d.maintenanceCycleDays)) return 'LOW';
   }
   return 'OK';
 }
@@ -25,5 +32,5 @@ export async function getPowerAprsStatus(): Promise<PowerAprsStatus> {
 export async function getStalePowerDeviceCount(): Promise<number> {
   const devices = await database.get<PowerDevice>('power_devices').query().fetch();
   const now = Date.now();
-  return devices.filter((d) => isChargeStale(d.lastFullChargeAt, now)).length;
+  return devices.filter((d) => isChargeStale(d.lastFullChargeAt, now, d.maintenanceCycleDays)).length;
 }

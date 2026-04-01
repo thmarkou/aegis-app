@@ -37,6 +37,7 @@ export function SettingsScreen() {
   const [loopbackDecodeMode, setLoopbackDecodeMode] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [showAprsDebug, setShowAprsDebug] = useState(false);
+  const [maintenanceAlertMonths, setMaintenanceAlertMonths] = useState('6');
 
   useFocusEffect(
     useCallback(() => {
@@ -61,7 +62,8 @@ export function SettingsScreen() {
       SecureSettings.getEmergencySmsNumber(),
       SecureSettings.getLoopbackDecodeMode(),
       SecureSettings.getTestMode(),
-    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test]) => {
+      SecureSettings.getMaintenanceAlertThresholdMonths(),
+    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test, maintMo]) => {
       setExpiryDays(String(d));
       setWeightPercent(String(p));
       setBodyWeightKg(bw != null ? String(bw) : '');
@@ -74,6 +76,7 @@ export function SettingsScreen() {
       setEmergencySms(emergency ?? '');
       setLoopbackDecodeMode(loopback);
       setTestMode(test);
+      setMaintenanceAlertMonths(String(maintMo));
     });
   }, []);
 
@@ -84,6 +87,16 @@ export function SettingsScreen() {
       return;
     }
     await SecureSettings.setExpiryDays(n);
+  };
+
+  const handleSaveMaintenanceMonths = async () => {
+    const n = parseInt(maintenanceAlertMonths, 10);
+    if (isNaN(n) || n < 1 || n > 60) {
+      Alert.alert('Invalid', 'Enter 1–60 months');
+      return;
+    }
+    await SecureSettings.setMaintenanceAlertThresholdMonths(n);
+    Alert.alert('Saved', 'Battery review window updated for warehouse items.');
   };
 
   const handleSaveWeight = async () => {
@@ -176,6 +189,22 @@ export function SettingsScreen() {
           trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
           thumbColor={sortByExpiry ? tactical.black : tactical.zinc[400]}
         />
+      </View>
+
+      <Text style={tacticalStyles.sectionTitle}>Battery & warehouse maintenance</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        Maintenance_Alert_Threshold_Months: next review date = last charge date + this many months (Comms/Nav,
+        radios, power, lighting items).
+      </Text>
+      <View style={tacticalStyles.rowInline}>
+        <TextInput
+          style={tacticalStyles.inputSmall}
+          value={maintenanceAlertMonths}
+          onChangeText={setMaintenanceAlertMonths}
+          onBlur={handleSaveMaintenanceMonths}
+          keyboardType="number-pad"
+        />
+        <Text style={{ color: tactical.zinc[500], fontSize: 16 }}>months</Text>
       </View>
 
       <Text style={tacticalStyles.sectionTitle}>Expiry notifications</Text>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import * as Location from 'expo-location';
 import {
   View,
@@ -11,9 +11,11 @@ import {
   Switch,
   ActivityIndicator,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
@@ -31,6 +33,17 @@ import {
   mapLegacyCategoryToPoolCategory,
   type PoolCategory,
 } from '../../../shared/constants/poolCategories';
+import {
+  findPowerDeviceByPoolItemId,
+  syncPowerDeviceNameFromPoolItem,
+} from '../../../services/powerDevicePoolSync';
+import * as SecureSettings from '../../../shared/services/secureSettings';
+import {
+  BATTERY_TYPE_OPTIONS,
+  poolCategoryRequiresBattery,
+  getBatteryAttentionLevel,
+  formatNextReviewDate,
+} from '../../../services/batteryInventoryReview';
 
 const CONDITIONS = ['New', 'Used'] as const;
 
@@ -59,11 +72,19 @@ export function ItemFormScreen() {
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [barcode, setBarcode] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [linkedPowerDeviceId, setLinkedPowerDeviceId] = useState<string | null>(null);
+  const [batteryType, setBatteryType] = useState('');
+  const [lastChargeDate, setLastChargeDate] = useState('');
+  const [batteryCapacityMah, setBatteryCapacityMah] = useState('');
+  const [chargingRequirements, setChargingRequirements] = useState('');
+  const [batteryTypeModalVisible, setBatteryTypeModalVisible] = useState(false);
+  const [showLastChargePicker, setShowLastChargePicker] = useState(false);
+  const [maintenanceMonths, setMaintenanceMonths] = useState(6);
 
-  const isNewInKit = kitId != null && packItemId == null && poolItemId == null;
+  /** New rows: always create a Global Inventory Pool row; optionally link to kit via pack line. */
+  const isNewItem = poolItemId == null && packItemId == null;
   const isPoolOnlyEdit = poolItemId != null && kitId == null;
-  const isNewPoolOnly =
-    kitId == null && poolItemId == null && packItemId == null;
+  const isEditingPackLine = packItemId != null && kitId != null;
 
   useEffect(() => {
     if (!poolItemId && !packItemId) return;
@@ -84,6 +105,24 @@ export function ItemFormScreen() {
     load().catch(() => {});
   }, [poolItemId, packItemId]);
 
+  useEffect(() => {
+    if (!poolItemId) {
+      setLinkedPowerDeviceId(null);
+      return;
+    }
+    void findPowerDeviceByPoolItemId(poolItemId).then((d) => setLinkedPowerDeviceId(d?.id ?? null));
+  }, [poolItemId]);
+
+  useEffect(() => {
+    void SecureSettings.getMaintenanceAlertThresholdMonths().then(setMaintenanceMonths);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void SecureSettings.getMaintenanceAlertThresholdMonths().then(setMaintenanceMonths);
+    }, [])
+  );
+
   function applyPoolToForm(pool: InventoryPoolItem) {
     setName(pool.name);
     setPoolCategory((pool.poolCategory as PoolCategory) ?? 'tools');
@@ -101,10 +140,31 @@ export function ItemFormScreen() {
     setLongitude(pool.longitude ?? null);
     setBarcode(pool.barcode ?? null);
     setIsWaypoint(pool.isWaypoint);
+    setBatteryType(pool.batteryType ?? '');
+    setLastChargeDate(
+      pool.lastChargeAt != null ? new Date(pool.lastChargeAt).toISOString().slice(0, 10) : ''
+    );
+    setBatteryCapacityMah(pool.batteryCapacityMah != null ? String(pool.batteryCapacityMah) : '');
+    setChargingRequirements(pool.chargingRequirements ?? '');
   }
 
   const hasLocation = latitude != null && longitude != null;
   const showQuantity = kitId != null && !isPoolOnlyEdit;
+  const showBatterySection = poolCategoryRequiresBattery(poolCategory);
+
+  const formBatteryLevel = useMemo(() => {
+    const ms = lastChargeDate.trim()
+      ? new Date(lastChargeDate.trim() + 'T12:00:00').getTime()
+      : null;
+    return getBatteryAttentionLevel(poolCategory, ms, maintenanceMonths);
+  }, [poolCategory, lastChargeDate, maintenanceMonths]);
+
+  const nextReviewLabel = useMemo(() => {
+    const ms = lastChargeDate.trim()
+      ? new Date(lastChargeDate.trim() + 'T12:00:00').getTime()
+      : null;
+    return formatNextReviewDate(ms, maintenanceMonths);
+  }, [lastChargeDate, maintenanceMonths]);
 
   const handleTemplateSelect = (r: TemplatePickResult) => {
     setName(r.name);
@@ -243,7 +303,7 @@ export function ItemFormScreen() {
   };
 
   const handleSave = async () => {
-    if (!isNewInKit && !isNewPoolOnly && !isPoolOnlyEdit && !packItemId) {
+    if (!isEditingPackLine && !isPoolOnlyEdit && !isNewItem) {
       Alert.alert('Error', 'Invalid item form state');
       return;
     }
@@ -255,7 +315,44 @@ export function ItemFormScreen() {
       Alert.alert('Error', 'Name is required');
       return;
     }
+    if (linkedPowerDeviceId && poolCategory !== 'power') {
+      Alert.alert(
+        'Category locked',
+        'This warehouse row is linked to a power device in Logistics. Keep category Power or edit the device under Logistics & charging.'
+      );
+      return;
+    }
+    if (poolCategoryRequiresBattery(poolCategory)) {
+      if (!batteryType.trim() || !lastChargeDate.trim()) {
+        Alert.alert(
+          'Battery required',
+          'Battery type and last charge / check date are required for this category.'
+        );
+        return;
+      }
+    }
     const expiry = expiryDate.trim() ? new Date(expiryDate).getTime() : null;
+
+    const battFields = poolCategoryRequiresBattery(poolCategory)
+      ? {
+          batteryType: batteryType.trim() || null,
+          lastChargeAt: new Date(lastChargeDate.trim() + 'T12:00:00').getTime(),
+          batteryCapacityMah: (() => {
+            const t = batteryCapacityMah.trim().replace(',', '.');
+            if (!t) return null;
+            const n = parseFloat(t);
+            return !isNaN(n) && n >= 0 ? n : null;
+          })(),
+          chargingRequirements: chargingRequirements.trim() || null,
+        }
+      : {
+          batteryType: null,
+          lastChargeAt: null,
+          batteryCapacityMah: null,
+          chargingRequirements: null,
+        };
+
+    let poolIdForPowerSync: string | null = null;
 
     await database.write(async () => {
       const pools = database.get<InventoryPoolItem>('inventory_pool_items');
@@ -277,11 +374,16 @@ export function ItemFormScreen() {
           r.longitude = longitude;
           r.barcode = barcode || scannedBarcode || null;
           r.isWaypoint = isWaypoint;
+          r.batteryType = battFields.batteryType;
+          r.lastChargeAt = battFields.lastChargeAt;
+          r.batteryCapacityMah = battFields.batteryCapacityMah;
+          r.chargingRequirements = battFields.chargingRequirements;
           r.updatedAt = new Date();
         });
+        poolIdForPowerSync = pool.id;
       };
 
-      if (packItemId && kitId) {
+      if (isEditingPackLine && packItemId && kitId) {
         const pack = await packs.find(packItemId);
         const pool = await pack.poolItem.fetch();
         await writePool(pool);
@@ -292,7 +394,7 @@ export function ItemFormScreen() {
       } else if (isPoolOnlyEdit && poolItemId) {
         const pool = await pools.find(poolItemId);
         await writePool(pool);
-      } else if (isNewInKit && kitId) {
+      } else if (isNewItem) {
         const newPool = await pools.create((r) => {
           r.name = name.trim();
           r.poolCategory = poolCategory;
@@ -308,35 +410,22 @@ export function ItemFormScreen() {
           r.longitude = longitude;
           r.barcode = barcode || scannedBarcode || null;
           r.isWaypoint = isWaypoint;
+          r.batteryType = battFields.batteryType;
+          r.lastChargeAt = battFields.lastChargeAt;
+          r.batteryCapacityMah = battFields.batteryCapacityMah;
+          r.chargingRequirements = battFields.chargingRequirements;
           r.createdAt = new Date();
           r.updatedAt = new Date();
         });
-        await packs.create((r) => {
-          r.kitId = kitId;
-          r.poolItemId = newPool.id;
-          r.quantity = q;
-          r.createdAt = new Date();
-          r.updatedAt = new Date();
-        });
-      } else if (isNewPoolOnly) {
-        await pools.create((r) => {
-          r.name = name.trim();
-          r.poolCategory = poolCategory;
-          r.unit = unit.trim() || 'pcs';
-          r.expiryDate = expiry;
-          r.weightGrams = w;
-          r.calories = cal;
-          r.waterLitersPerUnit = waterPer;
-          r.condition = condition?.toLowerCase() || null;
-          r.isEssential = isEssential;
-          r.notes = notes.trim() || null;
-          r.latitude = latitude;
-          r.longitude = longitude;
-          r.barcode = barcode || scannedBarcode || null;
-          r.isWaypoint = isWaypoint;
-          r.createdAt = new Date();
-          r.updatedAt = new Date();
-        });
+        if (kitId) {
+          await packs.create((r) => {
+            r.kitId = kitId;
+            r.poolItemId = newPool.id;
+            r.quantity = q;
+            r.createdAt = new Date();
+            r.updatedAt = new Date();
+          });
+        }
       }
 
       if (scannedBarcode) {
@@ -350,6 +439,10 @@ export function ItemFormScreen() {
         setScannedBarcode(null);
       }
     });
+
+    if (poolIdForPowerSync) {
+      await syncPowerDeviceNameFromPoolItem(poolIdForPowerSync, name.trim());
+    }
 
     refreshInventoryNotifications().catch(() => {});
     navigation.goBack();
@@ -387,7 +480,7 @@ export function ItemFormScreen() {
         onClose={() => setBarcodeScannerVisible(false)}
         onScan={handleBarcodeScan}
       />
-      <Text style={tacticalStyles.label}>Pool category</Text>
+      <Text style={tacticalStyles.label}>Category *</Text>
       <View style={[tacticalStyles.row, { flexWrap: 'wrap' }]}>
         {POOL_CATEGORY_KEYS.map((key) => (
           <TouchableOpacity
@@ -410,6 +503,106 @@ export function ItemFormScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      {showBatterySection ? (
+        <View style={styles.batterySection}>
+          <Text style={styles.batterySectionTitle}>Battery & Charging Management</Text>
+          <Text style={styles.batterySectionHint}>
+            Next review = last charge + {maintenanceMonths} mo (Settings · Maintenance alert threshold).
+          </Text>
+          {formBatteryLevel === 'needs_charge' || formBatteryLevel === 'missing_data' ? (
+            <Text style={styles.battAlertRed}>NEEDS CHARGE</Text>
+          ) : formBatteryLevel === 'upcoming' ? (
+            <Text style={styles.battAlertOrange}>UPCOMING MAINTENANCE</Text>
+          ) : null}
+          <Text style={tacticalStyles.label}>Battery type *</Text>
+          <TouchableOpacity
+            style={[tacticalStyles.input, styles.dropdownBtn]}
+            onPress={() => setBatteryTypeModalVisible(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={batteryType ? styles.dropdownText : styles.dropdownPlaceholder}>
+              {batteryType || 'Select battery type'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={tacticalStyles.label}>Last charge / check date *</Text>
+          <TouchableOpacity
+            style={[tacticalStyles.input, styles.dropdownBtn]}
+            onPress={() => setShowLastChargePicker(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={lastChargeDate ? styles.dropdownText : styles.dropdownPlaceholder}>
+              {lastChargeDate || 'Tap to select date'}
+            </Text>
+          </TouchableOpacity>
+          {showLastChargePicker && (
+            <View style={styles.datePickerWrap}>
+              <DateTimePicker
+                value={lastChargeDate ? new Date(lastChargeDate + 'T12:00:00') : new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(_, date) => {
+                  if (Platform.OS === 'android') setShowLastChargePicker(false);
+                  if (date) setLastChargeDate(date.toISOString().slice(0, 10));
+                }}
+              />
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity
+                  style={[tacticalStyles.btnPrimary, styles.datePickerDone]}
+                  onPress={() => setShowLastChargePicker(false)}
+                >
+                  <Text style={tacticalStyles.btnPrimaryText}>Done</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          <Text style={tacticalStyles.label}>Battery capacity (optional, mAh or Ah)</Text>
+          <TextInput
+            style={tacticalStyles.input}
+            value={batteryCapacityMah}
+            onChangeText={setBatteryCapacityMah}
+            keyboardType="decimal-pad"
+            placeholder="e.g. 5000 mAh or 2.6 Ah as number"
+            placeholderTextColor="#666"
+          />
+          <Text style={tacticalStyles.label}>Charging requirements (optional)</Text>
+          <TextInput
+            style={tacticalStyles.input}
+            value={chargingRequirements}
+            onChangeText={setChargingRequirements}
+            placeholder="e.g. 12V / 2A USB-C"
+            placeholderTextColor="#666"
+          />
+          <Text style={tacticalStyles.label}>Next review date (read-only)</Text>
+          <Text style={styles.readOnlyValue}>{nextReviewLabel}</Text>
+        </View>
+      ) : null}
+      <Modal
+        visible={batteryTypeModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBatteryTypeModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setBatteryTypeModalVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Battery type</Text>
+            {BATTERY_TYPE_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={styles.modalRow}
+                onPress={() => {
+                  setBatteryType(opt);
+                  setBatteryTypeModalVisible(false);
+                }}
+              >
+                <Text style={styles.modalRowText}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.modalClose} onPress={() => setBatteryTypeModalVisible(false)}>
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
       {showQuantity ? (
         <View style={[tacticalStyles.row, { flexWrap: 'nowrap' }]}>
           <View style={tacticalStyles.rowItem}>
@@ -652,4 +845,77 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     flex: 1,
   },
+  batterySection: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+    backgroundColor: tactical.zinc[900],
+  },
+  batterySectionTitle: {
+    color: tactical.amber,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  batterySectionHint: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  battAlertRed: {
+    color: '#f87171',
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  battAlertOrange: {
+    color: '#fb923c',
+    fontWeight: '800',
+    fontSize: 13,
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  dropdownBtn: { justifyContent: 'center', marginBottom: 16 },
+  dropdownText: { color: '#ffffff', fontSize: 16 },
+  dropdownPlaceholder: { color: '#666', fontSize: 16 },
+  readOnlyValue: {
+    color: tactical.zinc[400],
+    fontSize: 16,
+    marginBottom: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: tactical.zinc[900],
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+    paddingVertical: 8,
+    maxHeight: '70%',
+  },
+  modalTitle: {
+    color: tactical.amber,
+    fontSize: 16,
+    fontWeight: '800',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  modalRow: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: tactical.zinc[700],
+  },
+  modalRowText: { color: '#fff', fontSize: 16 },
+  modalClose: { padding: 16, alignItems: 'center' },
+  modalCloseText: { color: tactical.zinc[500], fontSize: 15, fontWeight: '600' },
 });

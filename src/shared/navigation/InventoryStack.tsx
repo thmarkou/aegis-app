@@ -9,6 +9,8 @@ import { ItemFormScreen } from '../../features/inventory/screens/ItemFormScreen'
 import { ProfileScreen } from '../../features/inventory/screens/ProfileScreen';
 import { ProfileFormScreen } from '../../features/inventory/screens/ProfileFormScreen';
 import { MissionPrepScreen } from '../../features/inventory/screens/MissionPrepScreen';
+import { LogisticsScreen } from '../../features/inventory/screens/LogisticsScreen';
+import { PowerDeviceFormScreen } from '../../features/inventory/screens/PowerDeviceFormScreen';
 import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScreen';
 import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
 import { TemplateListScreen } from '../../features/inventory/screens/TemplateListScreen';
@@ -17,13 +19,15 @@ import { TemplateFormScreen } from '../../features/inventory/screens/TemplateFor
 export type InventoryStackParamList = {
   KitList: undefined;
   KitDetail: { kitId: string; highlightedPackItemId?: string };
-  KitForm: { kitId: string };
+  KitForm: { kitId?: string };
   ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
   PoolPicker: { kitId: string };
-  InventoryPool: undefined;
+  InventoryPool: { filter?: 'needs_charge' };
   TemplateList: undefined;
   TemplateForm: { templateId?: string };
   MissionPrep: undefined;
+  Logistics: undefined;
+  PowerDeviceForm: { deviceId?: string };
   Profiles: undefined;
   ProfileForm: { profileId?: string };
 };
@@ -70,6 +74,14 @@ export function InventoryStack() {
         })}
       />
       <Stack.Screen name="MissionPrep" component={MissionPrepScreen} options={{ title: 'Mission Prep' }} />
+      <Stack.Screen name="Logistics" component={LogisticsScreen} options={{ title: 'LOGISTICS' }} />
+      <Stack.Screen
+        name="PowerDeviceForm"
+        component={PowerDeviceFormScreen}
+        options={({ route }) => ({
+          title: route.params?.deviceId ? 'Edit device' : 'New device',
+        })}
+      />
       <Stack.Screen
         name="KitDetail"
         component={KitDetailScreen}
@@ -92,7 +104,13 @@ export function InventoryStack() {
           ),
         })}
       />
-      <Stack.Screen name="KitForm" component={KitFormScreen} options={{ title: 'Edit Kit' }} />
+      <Stack.Screen
+        name="KitForm"
+        component={KitFormScreen}
+        options={({ route }) => ({
+          title: route.params?.kitId ? 'Edit Kit' : 'New Kit',
+        })}
+      />
       <Stack.Screen
         name="ItemForm"
         component={ItemFormScreen}
@@ -100,7 +118,7 @@ export function InventoryStack() {
       />
       <Stack.Screen name="PoolPicker" component={PoolPickerScreen} options={{ title: 'Add from Pool' }} />
       <Stack.Screen name="InventoryPool" component={InventoryPoolScreen} options={{ title: 'Inventory Pool' }} />
-      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Item Templates' }} />
+      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Blueprints' }} />
       <Stack.Screen
         name="TemplateForm"
         component={TemplateFormScreen}

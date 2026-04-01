@@ -266,6 +266,7 @@ export function DashboardScreen() {
     weather,
     maintenanceExpiringSoon,
     maintenanceStalePower,
+    batteryReviewDueCount,
     refresh,
   } = useDashboardData();
 
@@ -319,11 +320,20 @@ export function DashboardScreen() {
   const statusColor = isReady ? '#22c55e' : '#ef4444';
 
   const maintenanceNeedsAttention =
-    maintenanceExpiringSoon > 0 || maintenanceStalePower > 0;
+    maintenanceExpiringSoon > 0 ||
+    maintenanceStalePower > 0 ||
+    batteryReviewDueCount > 0;
 
   const handleOpenLogistics = () => {
     (navigation as { navigate: (name: string, params?: object) => void }).navigate('Mission', {
       screen: 'Logistics',
+    });
+  };
+
+  const handleOpenInventoryNeedsCharge = () => {
+    (navigation as { navigate: (name: string, params?: object) => void }).navigate('Mission', {
+      screen: 'InventoryPool',
+      params: { filter: 'needs_charge' },
     });
   };
 
@@ -400,9 +410,8 @@ export function DashboardScreen() {
         <StatusBadge isCompromised={isCompromised} statusText={statusText} statusColor={statusColor} />
       </View>
 
-      <Pressable
+      <View
         style={[styles.maintenanceCard, maintenanceNeedsAttention && styles.maintenanceCardAlert]}
-        onPress={handleOpenLogistics}
       >
         <Text style={styles.maintenanceTitle}>MAINTENANCE</Text>
         <Text
@@ -411,21 +420,27 @@ export function DashboardScreen() {
             maintenanceNeedsAttention && styles.maintenanceBodyAlert,
           ]}
         >
-          {maintenanceExpiringSoon === 0 && maintenanceStalePower === 0
-            ? 'No inventory or power alerts.'
-            : [
-                maintenanceExpiringSoon > 0
-                  ? `${maintenanceExpiringSoon} item(s) expiring soon`
-                  : null,
-                maintenanceStalePower > 0
-                  ? `${maintenanceStalePower} power device(s) STALE`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+          {[
+            maintenanceExpiringSoon > 0
+              ? `${maintenanceExpiringSoon} item(s) expiring soon`
+              : null,
+            maintenanceStalePower > 0 ? `${maintenanceStalePower} power device(s) STALE` : null,
+            batteryReviewDueCount > 0
+              ? `${batteryReviewDueCount} inventory item(s) need charge / review`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || 'No maintenance alerts.'}
         </Text>
-        <Text style={styles.maintenanceHint}>Tap · Logistics & Power</Text>
-      </Pressable>
+        <Pressable style={styles.maintenanceHint} onPress={handleOpenLogistics} hitSlop={8}>
+          <Text style={styles.maintenanceHintText}>Logistics & power →</Text>
+        </Pressable>
+        <Pressable style={styles.maintenanceHint} onPress={handleOpenInventoryNeedsCharge} hitSlop={8}>
+          <Text style={styles.maintenanceHintText}>
+            Inventory pool{batteryReviewDueCount > 0 ? ` · ${batteryReviewDueCount} need charge` : ''} →
+          </Text>
+        </Pressable>
+      </View>
 
       <View style={styles.telemetryGrid}>
         <TelemetryCard
@@ -634,9 +649,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   maintenanceHint: {
-    color: tactical.zinc[500],
-    fontSize: 11,
     marginTop: 8,
+    paddingVertical: 4,
+  },
+  maintenanceHintText: {
+    color: tactical.amber,
+    fontSize: 12,
+    fontWeight: '600',
   },
   gaugeWrap: {
     position: 'relative',

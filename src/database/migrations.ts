@@ -220,6 +220,7 @@ export default schemaMigrations({
     {
       toVersion: 14,
       steps: [
+        // WatermelonDB: use `createTable` (there is no `addTable` helper).
         createTable({
           name: 'mission_presets',
           columns: [
@@ -229,6 +230,58 @@ export default schemaMigrations({
             { name: 'water_liters_per_day', type: 'number' },
             { name: 'created_at', type: 'number' },
             { name: 'updated_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
+    {
+      // Recovery: some installs reached schema v14 without this table (e.g. mismatch during dev).
+      // Matches Watermelon encodeCreateTable + indices for mission_presets.
+      toVersion: 15,
+      steps: [
+        unsafeExecuteSql(
+          'create table if not exists "mission_presets" ("id" primary key, "_changed", "_status", "name", "duration_days", "calories_per_day", "water_liters_per_day", "created_at", "updated_at");'
+        ),
+        unsafeExecuteSql(
+          'create index if not exists "mission_presets_name" on "mission_presets" ("name");'
+        ),
+        unsafeExecuteSql(
+          'create index if not exists "mission_presets__status" on "mission_presets" ("_status");'
+        ),
+      ],
+    },
+    {
+      toVersion: 16,
+      steps: [
+        addColumns({
+          table: 'power_devices',
+          columns: [
+            { name: 'battery_type', type: 'string', isOptional: true },
+            { name: 'maintenance_cycle_days', type: 'number', isOptional: true },
+            { name: 'pool_item_id', type: 'string', isOptional: true },
+          ],
+        }),
+        unsafeExecuteSql(
+          'UPDATE power_devices SET maintenance_cycle_days = 90 WHERE maintenance_cycle_days IS NULL;'
+        ),
+        unsafeExecuteSql(
+          'CREATE INDEX IF NOT EXISTS power_devices_pool_item_id ON power_devices (pool_item_id);'
+        ),
+        unsafeExecuteSql(
+          `DELETE FROM power_devices WHERE slug IN ('uv_k5', 'main_power_bank');`
+        ),
+      ],
+    },
+    {
+      toVersion: 17,
+      steps: [
+        addColumns({
+          table: 'inventory_pool_items',
+          columns: [
+            { name: 'battery_type', type: 'string', isOptional: true },
+            { name: 'last_charge_at', type: 'number', isOptional: true },
+            { name: 'battery_capacity_mah', type: 'number', isOptional: true },
+            { name: 'charging_requirements', type: 'string', isOptional: true },
           ],
         }),
       ],

@@ -10,9 +10,11 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { database } from '../../../database';
 import type MissionPreset from '../../../database/models/MissionPreset';
 import type { MissionStackParamList } from '../../../shared/navigation/MissionStack';
+import * as SecureSettings from '../../../shared/services/secureSettings';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
 type R = RouteProp<MissionStackParamList, 'MissionPresetForm'>;
@@ -20,7 +22,7 @@ type R = RouteProp<MissionStackParamList, 'MissionPresetForm'>;
 export function MissionPresetFormScreen() {
   const route = useRoute<R>();
   const { presetId } = route.params ?? {};
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<MissionStackParamList>>();
 
   const [name, setName] = useState('');
   const [durationDays, setDurationDays] = useState('3');
@@ -41,39 +43,66 @@ export function MissionPresetFormScreen() {
       .catch(() => {});
   }, [presetId]);
 
+  const parsePositiveNumber = (raw: string): number | null => {
+    const v = parseFloat(raw.replace(',', '.'));
+    if (Number.isNaN(v) || v < 0) return null;
+    return v;
+  };
+
   const handleSave = async () => {
     const n = name.trim();
-    const d = Math.max(0.25, parseFloat(durationDays) || 0);
-    const c = Math.max(0, parseFloat(caloriesPerDay) || 0);
-    const w = Math.max(0, parseFloat(waterLitersPerDay) || 0);
     if (!n) {
       Alert.alert('Error', 'Name is required');
       return;
     }
 
-    await database.write(async () => {
-      const col = database.get<MissionPreset>('mission_presets');
-      if (presetId) {
-        const row = await col.find(presetId);
-        await row.update((r) => {
-          r.name = n;
-          r.durationDays = d;
-          r.caloriesPerDay = c;
-          r.waterLitersPerDay = w;
-          r.updatedAt = new Date();
-        });
-      } else {
-        await col.create((r) => {
-          r.name = n;
-          r.durationDays = d;
-          r.caloriesPerDay = c;
-          r.waterLitersPerDay = w;
-          r.createdAt = new Date();
-          r.updatedAt = new Date();
-        });
+    const d = parsePositiveNumber(durationDays);
+    if (d === null || d <= 0) {
+      Alert.alert('Invalid duration', 'Duration must be greater than 0.');
+      return;
+    }
+
+    const c = parsePositiveNumber(caloriesPerDay) ?? 0;
+    const w = parsePositiveNumber(waterLitersPerDay) ?? 0;
+
+    try {
+      let createdId: string | null = null;
+      await database.write(async () => {
+        const col = database.get<MissionPreset>('mission_presets');
+        if (presetId) {
+          const row = await col.find(presetId);
+          await row.update((r) => {
+            r.name = n;
+            r.durationDays = d;
+            r.caloriesPerDay = c;
+            r.waterLitersPerDay = w;
+            r.updatedAt = new Date();
+          });
+        } else {
+          const newRow = await col.create((r) => {
+            r.name = n;
+            r.durationDays = d;
+            r.caloriesPerDay = c;
+            r.waterLitersPerDay = w;
+            r.createdAt = new Date();
+            r.updatedAt = new Date();
+          });
+          createdId = newRow.id;
+        }
+      });
+      if (createdId) {
+        await SecureSettings.setSelectedMissionPresetId(createdId);
       }
-    });
-    navigation.goBack();
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('MissionPresetList');
+      }
+    } catch (e) {
+      console.error('Mission preset save failed', e);
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      Alert.alert('Could not save', msg);
+    }
   };
 
   const d = Math.max(0, parseFloat(durationDays) || 0);
@@ -93,7 +122,7 @@ export function MissionPresetFormScreen() {
         style={tacticalStyles.input}
         value={name}
         onChangeText={setName}
-        placeholder="e.g. Winter Hunt, 72h Bug-Out"
+        placeholder="Preset name"
         placeholderTextColor="#666"
       />
       <Text style={tacticalStyles.label}>Duration (days)</Text>

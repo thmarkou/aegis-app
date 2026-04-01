@@ -1,7 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
+/** Keep `version` equal to the latest `toVersion` in `migrations.ts`. */
 export default appSchema({
-  version: 14,
+  version: 17,
   tables: [
     tableSchema({
       name: 'kits',
@@ -31,6 +32,10 @@ export default appSchema({
         { name: 'latitude', type: 'number', isOptional: true },
         { name: 'longitude', type: 'number', isOptional: true },
         { name: 'is_waypoint', type: 'boolean' },
+        { name: 'battery_type', type: 'string', isOptional: true },
+        { name: 'last_charge_at', type: 'number', isOptional: true },
+        { name: 'battery_capacity_mah', type: 'number', isOptional: true },
+        { name: 'charging_requirements', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -99,6 +104,9 @@ export default appSchema({
         { name: 'slug', type: 'string', isIndexed: true },
         { name: 'name', type: 'string' },
         { name: 'last_full_charge_at', type: 'number', isOptional: true },
+        { name: 'battery_type', type: 'string', isOptional: true },
+        { name: 'maintenance_cycle_days', type: 'number', isOptional: true },
+        { name: 'pool_item_id', type: 'string', isOptional: true, isIndexed: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

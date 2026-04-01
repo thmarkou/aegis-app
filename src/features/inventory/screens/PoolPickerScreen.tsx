@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  SectionList,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
 import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
@@ -20,44 +20,29 @@ import {
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
-type Section = { title: string; data: InventoryPoolItem[] };
-
 export function PoolPickerScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'PoolPicker'>>();
   const { kitId } = route.params;
   const navigation = useNavigation();
-  const [sections, setSections] = useState<Section[]>([]);
+  const [items, setItems] = useState<InventoryPoolItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const pools = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
-    const byCat: Record<PoolCategory, InventoryPoolItem[]> = {
-      tools: [],
-      consumables: [],
-      medical: [],
-      shelter_clothing: [],
-      comms_nav: [],
-    };
-    for (const p of pools) {
-      const k = (POOL_CATEGORY_KEYS as readonly string[]).includes(p.poolCategory)
-        ? (p.poolCategory as PoolCategory)
-        : 'tools';
-      byCat[k].push(p);
+    setLoading(true);
+    try {
+      const pools = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
+      pools.sort((a, b) => a.name.localeCompare(b.name));
+      setItems(pools);
+    } finally {
+      setLoading(false);
     }
-    const next: Section[] = [];
-    for (const key of POOL_CATEGORY_KEYS) {
-      const rows = byCat[key];
-      if (rows.length === 0) continue;
-      rows.sort((a, b) => a.name.localeCompare(b.name));
-      next.push({ title: POOL_CATEGORY_LABELS[key], data: rows });
-    }
-    setSections(next);
-    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   const addPoolToKit = async (pool: InventoryPoolItem) => {
     const packs = database.get<KitPackItem>('kit_pack_items');
@@ -84,6 +69,14 @@ export function PoolPickerScreen() {
     navigation.goBack();
   };
 
+  const categoryLabel = (p: InventoryPoolItem) => {
+    const raw = p.poolCategory as string;
+    const key = (POOL_CATEGORY_KEYS as readonly string[]).includes(raw)
+      ? (raw as PoolCategory)
+      : 'tools';
+    return POOL_CATEGORY_LABELS[key];
+  };
+
   if (loading) {
     return (
       <View style={[tacticalStyles.screen, styles.center]}>
@@ -94,16 +87,16 @@ export function PoolPickerScreen() {
 
   return (
     <View style={tacticalStyles.screen}>
-      <Text style={styles.hint}>Pick an item from your global pool to pack in this kit.</Text>
-      <SectionList
-        sections={sections}
+      <Text style={styles.hint}>
+        Pick an item from your warehouse catalog (Global Inventory Pool) to add to this kit.
+      </Text>
+      <FlatList
+        data={items}
         keyExtractor={(item) => item.id}
-        renderSectionHeader={({ section: { title } }) => (
-          <Text style={styles.sectionHeader}>{title}</Text>
-        )}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.row} onPress={() => void addPoolToKit(item)} activeOpacity={0.75}>
             <View style={styles.rowText}>
+              <Text style={styles.catBadge}>{categoryLabel(item)}</Text>
               <Text style={styles.rowName}>{item.name}</Text>
               <Text style={styles.rowMeta}>
                 {(item.weightGrams / 1000).toFixed(2)} kg / unit
@@ -114,7 +107,10 @@ export function PoolPickerScreen() {
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <Text style={tacticalStyles.emptyText}>No items in pool yet. Add items under Global Inventory Pool.</Text>
+          <Text style={tacticalStyles.emptyText}>
+            No items in your warehouse yet. Add them from Mission → Warehouse catalog (or Inventory tab) with + or Add
+            from Templates.
+          </Text>
         }
         contentContainerStyle={styles.listContent}
       />
@@ -132,16 +128,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   listContent: { paddingBottom: 32 },
-  sectionHeader: {
-    color: tactical.amber,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    backgroundColor: tactical.black,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -155,6 +141,13 @@ const styles = StyleSheet.create({
     borderColor: tactical.zinc[700],
   },
   rowText: { flex: 1, paddingRight: 12 },
+  catBadge: {
+    color: tactical.amber,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
   rowName: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
   rowMeta: { color: tactical.zinc[500], fontSize: 13, marginTop: 4 },
   addHint: {

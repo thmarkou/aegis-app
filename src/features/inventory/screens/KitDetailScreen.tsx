@@ -10,6 +10,7 @@ import {
   Animated,
   TextInput,
   Easing,
+  Pressable,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -133,10 +134,20 @@ export function KitDetailScreen() {
   );
 
   useEffect(() => {
-    if (kit?.name) {
-      navigation.setOptions({ title: kit.name });
-    }
-  }, [kit?.name, navigation]);
+    if (!kit) return;
+    navigation.setOptions({
+      title: kit.name,
+      headerRight: () => (
+        <Pressable
+          onPress={() => navigation.navigate('KitForm', { kitId })}
+          hitSlop={12}
+          accessibilityLabel="Edit kit name and capacity"
+        >
+          <Ionicons name="create-outline" size={22} color={tactical.amber} />
+        </Pressable>
+      ),
+    });
+  }, [kit, kitId, navigation]);
 
   const sortedLines = sortByExpiry
     ? [...lines].sort((a, b) => {
@@ -202,8 +213,6 @@ export function KitDetailScreen() {
     <Text style={styles.telemetryLabel}>PKG_WT: {totalKg.toFixed(2)} KG</Text>
   );
 
-  const handleEditHydration = () => navigation.navigate('KitForm', { kitId });
-
   return (
     <View style={tacticalStyles.screen}>
       <View style={[styles.loadBar, isOverLimit && styles.loadBarOver]}>
@@ -234,14 +243,6 @@ export function KitDetailScreen() {
       <View style={[styles.telemetryBlock, isOverLimit && styles.weightWarn]}>
         {weightDisplay}
         <View style={styles.summaryRow}>
-          <TouchableOpacity
-            style={[styles.hydrationBadge, waterLiters === 0 && styles.hydrationBadgeEmpty]}
-            onPress={handleEditHydration}
-          >
-            <Ionicons name="water" size={18} color={tactical.amber} />
-            <Text style={styles.hydrationText}>{waterLiters}L</Text>
-            <Ionicons name="pencil" size={12} color={tactical.zinc[500]} style={{ marginLeft: 4 }} />
-          </TouchableOpacity>
           <Text style={styles.summaryText}>{lines.length} lines</Text>
           {totalCalories > 0 && <Text style={styles.caloriesText}>{Math.round(totalCalories)} kcal</Text>}
         </View>
@@ -364,9 +365,16 @@ export function KitDetailScreen() {
           );
         }}
         ListEmptyComponent={
-          <Text style={tacticalStyles.emptyText}>
-            {searchQuery.trim() ? 'No items match search.' : 'No items. Tap + or Add from Pool.'}
-          </Text>
+          lines.length === 0 && !searchQuery.trim() ? (
+            <View style={styles.emptyKitBanner}>
+              <Text style={styles.emptyKitTitle}>Your kit is empty.</Text>
+              <Text style={styles.emptyKitBody}>
+                Tap &quot;Add from Pool&quot; to pack items from your Warehouse.
+              </Text>
+            </View>
+          ) : (
+            <Text style={tacticalStyles.emptyText}>No items match search.</Text>
+          )
         }
       />
       <TouchableOpacity style={tacticalStyles.fab} onPress={handleAddItem}>
@@ -395,6 +403,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  emptyKitBanner: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: tactical.amber,
+    backgroundColor: 'rgba(255, 191, 0, 0.08)',
+  },
+  emptyKitTitle: {
+    color: tactical.amber,
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emptyKitBody: {
+    color: tactical.zinc[400],
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
   },
   loadBar: {
     marginHorizontal: 16,
@@ -472,26 +503,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
     marginTop: 10,
-  },
-  hydrationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255, 191, 0, 0.2)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: tactical.amber,
-  },
-  hydrationBadgeEmpty: {
-    backgroundColor: tactical.zinc[900],
-    borderColor: tactical.zinc[700],
-  },
-  hydrationText: {
-    color: tactical.amber,
-    fontSize: 16,
-    fontWeight: '700',
   },
   summaryText: {
     color: tactical.zinc[400],

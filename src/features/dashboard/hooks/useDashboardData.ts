@@ -3,24 +3,33 @@ import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import { Pedometer } from 'expo-sensors';
 import NetInfo from '@react-native-community/netinfo';
+import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
+import type PowerDevice from '../../../database/models/PowerDevice';
 import type KitPackItem from '../../../database/models/KitPackItem';
 import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
+import type MissionPreset from '../../../database/models/MissionPreset';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { haversineKm, bearingDeg } from '../../../shared/utils/geoUtils';
 import { fetchWeatherForLocation } from '../services/weatherService';
 import { PROACTIVE_EXPIRY_DAYS } from '../../../services/inventoryAprsStatus';
 import { getStalePowerDeviceCount } from '../../../services/powerLogisticsStatus';
-
-const MISSION_KEYS = [
-  'missionCheck_radiosCharged',
-  'missionCheck_antennaTuned',
-  'missionCheck_cablesConnected',
-  'missionCheck_offlineMapsVerified',
-  'missionCheck_emergencyRations',
-] as const;
+import { poolItemNeedsBatteryAttention } from '../../../services/batteryInventoryReview';
+import { computeKitNutritionTotals } from '../../../services/missionReadiness';
 
 const EXPIRY_WARN_DAYS = 30;
+
+/** 0–100 readiness from active kit vs selected mission preset (calories + water targets). */
+function readinessPercentForActiveKit(
+  preset: MissionPreset,
+  totals: Awaited<ReturnType<typeof computeKitNutritionTotals>>
+): number {
+  const targetKcal = preset.durationDays * preset.caloriesPerDay;
+  const targetWater = preset.durationDays * preset.waterLitersPerDay;
+  const kcalRatio = targetKcal > 0 ? Math.min(1, totals.totalKcal / targetKcal) : 1;
+  const waterRatio = targetWater > 0 ? Math.min(1, totals.totalWaterLiters / targetWater) : 1;
+  return Math.round(((kcalRatio + waterRatio) / 2) * 100);
+}
 
 export function useDashboardData() {
   const [readinessScore, setReadinessScore] = useState(0);
@@ -35,26 +44,37 @@ export function useDashboardData() {
   const [weather, setWeather] = useState<{ tempC: number; windKmh: number } | null>(null);
   const [maintenanceExpiringSoon, setMaintenanceExpiringSoon] = useState(0);
   const [maintenanceStalePower, setMaintenanceStalePower] = useState(0);
+  const [batteryReviewDueCount, setBatteryReviewDueCount] = useState(0);
 
   const load = useCallback(async () => {
     const now = Date.now();
     const warnThreshold = now + EXPIRY_WARN_DAYS * 24 * 60 * 60 * 1000;
 
-    const packs = await database.get<KitPackItem>('kit_pack_items').query().fetch();
+    const activeKitId = await SecureSettings.getActiveKitId();
+    const presetId = await SecureSettings.getSelectedMissionPresetId();
 
-    let missionChecksDone = 0;
-    for (const key of MISSION_KEYS) {
-      if (await SecureSettings.getMissionCheck(key)) missionChecksDone++;
+    let readiness = 0;
+    if (activeKitId && presetId) {
+      try {
+        const preset = await database.get<MissionPreset>('mission_presets').find(presetId);
+        const totals = await computeKitNutritionTotals(activeKitId);
+        readiness = readinessPercentForActiveKit(preset, totals);
+      } catch {
+        readiness = 0;
+      }
     }
-
-    // Readiness = % of Mission Prep checklist items checked (linked to MISSION tab)
-    const missionPct = (missionChecksDone / MISSION_KEYS.length) * 100;
-    setReadinessScore(missionPct);
+    setReadinessScore(readiness);
 
     let totalGrams = 0;
-    for (const p of packs) {
-      const pool: InventoryPoolItem = await p.poolItem.fetch();
-      totalGrams += p.quantity * pool.weightGrams;
+    if (activeKitId) {
+      const packs = await database
+        .get<KitPackItem>('kit_pack_items')
+        .query(Q.where('kit_id', activeKitId))
+        .fetch();
+      for (const p of packs) {
+        const pool: InventoryPoolItem = await p.poolItem.fetch();
+        totalGrams += p.quantity * pool.weightGrams;
+      }
     }
     setTotalWeightKg(totalGrams / 1000);
 
@@ -65,6 +85,12 @@ export function useDashboardData() {
     const thirtyHorizon = now + PROACTIVE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
     let expiringSoon = 0;
     const poolItems = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
+    const maintMonths = await SecureSettings.getMaintenanceAlertThresholdMonths();
+    let batteryDue = 0;
+    for (const item of poolItems) {
+      if (poolItemNeedsBatteryAttention(item, maintMonths, now)) batteryDue++;
+    }
+    setBatteryReviewDueCount(batteryDue);
     for (const item of poolItems) {
       if (item.expiryDate) {
         const exp = item.expiryDate;
@@ -144,6 +170,18 @@ export function useDashboardData() {
     return () => sub.remove();
   }, [load]);
 
+  // STALE count updates when charge dates or devices change (Logistics) without leaving Dashboard.
+  useEffect(() => {
+    const sub = database
+      .get<PowerDevice>('power_devices')
+      .query()
+      .observe()
+      .subscribe(() => {
+        void getStalePowerDeviceCount().then(setMaintenanceStalePower);
+      });
+    return () => sub.unsubscribe();
+  }, []);
+
   return {
     readinessScore,
     totalWeightKg,
@@ -157,6 +195,7 @@ export function useDashboardData() {
     weather,
     maintenanceExpiringSoon,
     maintenanceStalePower,
+    batteryReviewDueCount,
     refresh: load,
   };
 }

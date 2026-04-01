@@ -4,10 +4,10 @@
 export type SharedStackParamList = {
   KitList: undefined;
   KitDetail: { kitId: string; highlightedPackItemId?: string };
-  KitForm: { kitId: string };
+  KitForm: { kitId?: string };
   ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
   PoolPicker: { kitId: string };
-  InventoryPool: undefined;
+  InventoryPool: { filter?: 'needs_charge' };
   Profiles: undefined;
   ProfileForm: { profileId?: string };
 };

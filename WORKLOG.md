@@ -334,7 +334,7 @@
 
 ---
 
-## 2026-04-01 (Τετάρτη) – Tactical COMMS / APRS · Centralized Inventory Pool & Mission Planner
+## 2026-04-01 (Τετάρτη) – COMMS/APRS, pool & mission, active kit, power/logistics, Dashboard
 
 ### Στόχος (COMMS)
 Ενοποίηση λειτουργιών Tactical Comms (χάρτης, τηλεμετρία, digipeaters, SMSGTE, AX.25) και τελική polish μετά από επιτυχή acoustic loopback decode.
@@ -388,6 +388,37 @@
 - `seedBugOutKit`: εξασφάλιση kit **35L Bug-Out**.
 - Map / dashboard / notifications / APRS inventory status: ανάγνωση από `inventory_pool_items` (και packs όπου χρειάζεται βάρος).
 - `App.tsx`: `seedBugOutKit`, `seedMissionPresets` μετά το DB init.
+
+### Mission & active kit
+- Δυναμικό **active kit** από `SecureSettings.activeKitId` + live `kits` (observe)· αφαίρεση hardcoded **35L Bug-Out** / `seedBugOutKit`.
+- **MissionPrep**: επιλογή kit (horizontal chips), readiness & PKG_WT με βάση το ενεργό kit· σύνδεση με **Mission presets** (DB).
+- **KitForm**: δημιουργία χωρίς `kitId`, toggle **Set as active**, `replace` → **KitDetail** μετά το save.
+- **KitList**: «New kit» → **KitForm** (όχι silent insert).
+- Navigation: `KitForm: { kitId?: string }` σε Mission/Inventory/Shared stacks.
+
+### Logistics & power devices (`power_devices`)
+- **LogisticsScreen**: λίστα συσκευών, «Charged today» / ημερομηνία φόρτισης, **PowerDeviceForm** (όνομα, τύπος μπαταρίας, κύκλος συντήρησης).
+- **powerDevicePoolSync**: δημιουργία **Power** pool row + σύνδεση `pool_item_id`· διαγραφή συγχρονισμένη.
+- Schema **v16**: `battery_type`, `maintenance_cycle_days`, `pool_item_id` σε `power_devices`· migration αφαιρεί παλιά seed slugs `uv_k5` / `main_power_bank`.
+- **seedPowerDevices**: κενό (χωρίς default συσκευές).
+
+### Warehouse catalog & Item (μπαταρία σε μία φόρμα)
+- Schema **v17**: `inventory_pool_items` + `battery_type`, `last_charge_at`, `battery_capacity_mah`, `charging_requirements`.
+- **poolCategories**: επιπλέον `tactical_radios`, `power_units`, `power_banks`, `lighting`, `power`· **BATTERY_POOL_CATEGORY_KEYS** για conditional UI.
+- **ItemForm**: ενότητα **Battery & Charging Management** (τύπος, ημερομηνία, χωρητικότητα, charging)· validation όταν η κατηγορία το απαιτεί· next review από **Maintenance_Alert_Threshold_Months** (Settings).
+- **SecureSettings**: `get/setMaintenanceAlertThresholdMonths` (default 6 μήνες).
+
+### InventoryPool & φίλτρο
+- **Μία** λίστα καταλόγου· chip **Needs charge** + badges (NEEDS CHARGE / UPCOMING) σε γραμμές.
+- Route params: **`InventoryPool: { filter?: 'needs_charge' }`** (nested: `Mission` → `InventoryPool`).
+
+### Dashboard
+- **Ένα** MAINTENANCE card: στατιστικά expiry + power STALE + αριθμός inventory που χρειάζονται charge/review.
+- Δύο ενέργειες: **Logistics & power →** · **Inventory pool →** με `navigate('Mission', { screen: 'InventoryPool', params: { filter: 'needs_charge' } })`.
+- **useDashboardData**: `batteryReviewDueCount`· παρατήρηση `power_devices` για STALE count.
+
+### Σημείωση UX
+- **Logistics** (`power_devices`) vs **Warehouse** (`inventory_pool_items`): δύο ρόλοι (λειτουργική φόρτιση vs catalog)· συζήτηση για μελλοντική ενοποίηση εισόδου μόνο από catalog.
 
 ### Git
 - Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-01).

@@ -1,7 +1,7 @@
 /**
  * Mission Prep – dynamic mission presets, readiness vs active kit, logistics rows, checklist.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -47,12 +47,102 @@ export function MissionPrepScreen() {
   const [selectedPreset, setSelectedPreset] = useState<MissionPreset | null>(null);
   const [activeKitId, setActiveKitId] = useState<string | null>(null);
   const [kits, setKits] = useState<Kit[]>([]);
-  const [bugOutKit, setBugOutKit] = useState<Kit | null>(null);
   const [poolCount, setPoolCount] = useState(0);
   const [powerDevices, setPowerDevices] = useState<PowerDevice[]>([]);
   const [readinessLine, setReadinessLine] = useState<string>('');
   const [readinessOk, setReadinessOk] = useState(true);
   const [loadingReadiness, setLoadingReadiness] = useState(true);
+
+  const kitsIdsSig = useMemo(() => kits.map((k) => k.id).sort().join(','), [kits]);
+
+  const activeKit = useMemo(
+    () => (activeKitId ? kits.find((k) => k.id === activeKitId) ?? null : null),
+    [kits, activeKitId]
+  );
+
+  // Live kits so switching active kit elsewhere updates this screen without refocus.
+  useEffect(() => {
+    const sub = database
+      .get<Kit>('kits')
+      .query()
+      .observe()
+      .subscribe((rows) => {
+        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
+        setKits(sorted);
+      });
+    return () => sub.unsubscribe();
+  }, []);
+
+  // Keep activeKitId aligned with SecureSettings when kit rows change (delete, sync, first launch).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const sid = await SecureSettings.getActiveKitId();
+      if (cancelled) return;
+      if (kits.length === 0) {
+        setActiveKitId(null);
+        if (sid) await SecureSettings.setActiveKitId(null);
+        return;
+      }
+      if (!sid || !kits.some((k) => k.id === sid)) {
+        const next = kits[0].id;
+        await SecureSettings.setActiveKitId(next);
+        setActiveKitId(next);
+      } else {
+        setActiveKitId(sid);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [kitsIdsSig]);
+
+  // Live mission presets so chips update when rows change without refocusing this screen.
+  useEffect(() => {
+    const sub = database
+      .get<MissionPreset>('mission_presets')
+      .query()
+      .observe()
+      .subscribe((rows) => {
+        const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
+        setMissionPresets(sorted);
+      });
+    return () => sub.unsubscribe();
+  }, []);
+
+  const presetIdsSig = useMemo(
+    () => missionPresets.map((p) => p.id).sort().join(','),
+    [missionPresets]
+  );
+
+  // When preset rows are added/removed, re-resolve selection from SecureStore (e.g. new preset from form).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const sid = await SecureSettings.getSelectedMissionPresetId();
+      if (cancelled) return;
+      setSelectedPreset((prev) => {
+        const bySid = sid ? missionPresets.find((p) => p.id === sid) : null;
+        if (bySid) return bySid;
+        if (!prev) return missionPresets[0] ?? null;
+        const updated = missionPresets.find((p) => p.id === prev.id);
+        return updated ?? missionPresets[0] ?? null;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presetIdsSig]);
+
+  // Same IDs but field updates (e.g. edit preset): refresh model reference for readiness math.
+  useEffect(() => {
+    setSelectedPreset((prev) => {
+      if (missionPresets.length === 0) return null;
+      if (!prev) return prev;
+      const updated = missionPresets.find((p) => p.id === prev.id);
+      return updated ?? missionPresets[0] ?? null;
+    });
+  }, [missionPresets]);
 
   const load = useCallback(async () => {
     const state: Record<string, boolean> = {};
@@ -62,37 +152,12 @@ export function MissionPrepScreen() {
     setChecks(state);
     const tm = await SecureSettings.getTestMode();
     setTestMode(tm);
-    const [kid, kitRows, poolN, devices, presetRows, sid] = await Promise.all([
-      SecureSettings.getActiveKitId(),
-      database.get<Kit>('kits').query().fetch(),
+    const [poolN, devices] = await Promise.all([
       database.get('inventory_pool_items').query().fetchCount(),
       database.get<PowerDevice>('power_devices').query().fetch(),
-      database.get<MissionPreset>('mission_presets').query().fetch(),
-      SecureSettings.getSelectedMissionPresetId(),
     ]);
-    presetRows.sort((a, b) => a.name.localeCompare(b.name));
-    setMissionPresets(presetRows);
-    let chosen = sid ? presetRows.find((p) => p.id === sid) ?? null : null;
-    if (!chosen && presetRows.length > 0) {
-      chosen = presetRows[0];
-    }
-    setSelectedPreset(chosen);
-    if (chosen && sid !== chosen.id) {
-      await SecureSettings.setSelectedMissionPresetId(chosen.id);
-    }
     setPoolCount(poolN);
     setPowerDevices(devices);
-    kitRows.sort((a, b) => a.name.localeCompare(b.name));
-    setKits(kitRows);
-    const bug = kitRows.find((k) => k.name === '35L Bug-Out') ?? null;
-    setBugOutKit(bug);
-    let resolvedKit = kid;
-    if (!resolvedKit && bug) resolvedKit = bug.id;
-    if (resolvedKit && !kitRows.some((k) => k.id === resolvedKit)) resolvedKit = bug?.id ?? kitRows[0]?.id ?? null;
-    setActiveKitId(resolvedKit);
-    if (resolvedKit !== kid && resolvedKit != null) {
-      await SecureSettings.setActiveKitId(resolvedKit);
-    }
   }, []);
 
   const refreshReadiness = useCallback(async () => {
@@ -100,7 +165,7 @@ export function MissionPrepScreen() {
     try {
       const kid = activeKitId;
       if (!kid) {
-        setReadinessLine('Select an active kit to compare packed load vs preset.');
+        setReadinessLine('Create a kit (All kits) and set it active to compare packed load vs preset.');
         setReadinessOk(false);
         return;
       }
@@ -128,6 +193,11 @@ export function MissionPrepScreen() {
     }, [load])
   );
 
+  const switchKit = async (id: string) => {
+    await SecureSettings.setActiveKitId(id);
+    setActiveKitId(id);
+  };
+
   const handleToggle = async (key: string, value: boolean) => {
     await SecureSettings.setMissionCheck(key, value);
     setChecks((prev) => ({ ...prev, [key]: value }));
@@ -154,11 +224,6 @@ export function MissionPrepScreen() {
     setSelectedPreset(p);
   };
 
-  const selectActiveKit = async (id: string) => {
-    await SecureSettings.setActiveKitId(id);
-    setActiveKitId(id);
-  };
-
   return (
     <ScrollView
       style={styles.screen}
@@ -182,7 +247,7 @@ export function MissionPrepScreen() {
       <View style={styles.presetRow}>
         {missionPresets.length === 0 ? (
           <Text style={styles.emptyPresets}>
-            No mission presets yet. Tap Edit Presets to add one (e.g. Winter Hunt, 72h Bug-Out).
+            No mission presets yet. Tap Edit Presets to add one and define calorie and water targets.
           </Text>
         ) : (
           missionPresets.map((p) => {
@@ -200,24 +265,6 @@ export function MissionPrepScreen() {
             );
           })
         )}
-      </View>
-
-      <Text style={styles.rowHeading}>Active kit</Text>
-      <View style={styles.kitPicker}>
-        {kits.map((k) => {
-          const on = activeKitId === k.id;
-          return (
-            <TouchableOpacity
-              key={k.id}
-              style={[styles.kitChip, on && styles.kitChipOn]}
-              onPress={() => void selectActiveKit(k.id)}
-            >
-              <Text style={[styles.kitChipText, on && styles.kitChipTextOn]} numberOfLines={1}>
-                {k.name}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
       </View>
 
       <View style={styles.readinessBox}>
@@ -243,29 +290,58 @@ export function MissionPrepScreen() {
       </TouchableOpacity>
 
       <Text style={styles.blockTitle}>[ Active Kits ]</Text>
-      {bugOutKit && (
-        <View style={styles.bugOutRow}>
+      <Text style={styles.switchKitLabel}>Switch kit</Text>
+      {kits.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.kitChipScroll}
+          contentContainerStyle={styles.kitChipScrollContent}
+        >
+          {kits.map((k) => {
+            const on = k.id === activeKitId;
+            return (
+              <TouchableOpacity
+                key={k.id}
+                style={[styles.kitSwitchChip, on && styles.kitSwitchChipOn]}
+                onPress={() => void switchKit(k.id)}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.kitSwitchChipText, on && styles.kitSwitchChipTextOn]} numberOfLines={1}>
+                  {k.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <Text style={styles.noKitsHint}>No kits yet. Open All kits below to create one.</Text>
+      )}
+
+      {activeKit ? (
+        <View style={styles.activeKitRow}>
           <TouchableOpacity
-            style={styles.bugOutMain}
-            onPress={() => navigation.navigate('KitDetail', { kitId: bugOutKit.id })}
+            style={styles.activeKitMain}
+            onPress={() => navigation.navigate('KitDetail', { kitId: activeKit.id })}
             activeOpacity={0.8}
           >
             <Ionicons name="bag-outline" size={22} color={tactical.amber} />
             <View style={styles.blockBody}>
-              <Text style={styles.blockPrimary}>35L Bug-Out</Text>
-              <Text style={styles.blockSecondary}>Open kit · pack from pool</Text>
+              <Text style={styles.blockPrimary}>{activeKit.name}</Text>
+              <Text style={styles.blockSecondary}>Active kit · open to pack from pool</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={tactical.zinc[500]} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.bugOutEdit}
-            onPress={() => navigation.navigate('KitForm', { kitId: bugOutKit.id })}
-            accessibilityLabel="Edit 35L Bug-Out kit"
+            style={styles.activeKitEdit}
+            onPress={() => navigation.navigate('KitForm', { kitId: activeKit.id })}
+            accessibilityLabel="Edit active kit"
           >
             <Ionicons name="create-outline" size={22} color={tactical.amber} />
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
+
       <TouchableOpacity style={styles.blockRow} onPress={() => navigation.navigate('KitList')} activeOpacity={0.8}>
         <Ionicons name="list-outline" size={22} color={tactical.amber} />
         <View style={styles.blockBody}>
@@ -280,7 +356,7 @@ export function MissionPrepScreen() {
       <Text style={styles.blockTitle}>[ Global Inventory Pool ]</Text>
       <TouchableOpacity
         style={styles.blockRow}
-        onPress={() => navigation.navigate('InventoryPool')}
+        onPress={() => navigation.navigate('InventoryPool', {})}
         activeOpacity={0.8}
       >
         <Ionicons name="cube-outline" size={22} color={tactical.amber} />
@@ -392,18 +468,6 @@ const styles = StyleSheet.create({
   presetChipTextOn: { color: tactical.amber },
   presetMeta: { color: tactical.zinc[500], fontSize: 12, marginTop: 4, lineHeight: 16 },
   presetMetaOn: { color: tactical.zinc[400] },
-  kitPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  kitChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: tactical.zinc[700],
-    maxWidth: '100%',
-  },
-  kitChipOn: { borderColor: tactical.amber, backgroundColor: tactical.zinc[900] },
-  kitChipText: { color: tactical.zinc[400], fontSize: 14, fontWeight: '600' },
-  kitChipTextOn: { color: tactical.amber },
   readinessBox: {
     minHeight: 48,
     justifyContent: 'center',
@@ -428,6 +492,36 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     letterSpacing: 0.5,
   },
+  switchKitLabel: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  kitChipScroll: { marginBottom: 12 },
+  kitChipScrollContent: { gap: 8, paddingRight: 8 },
+  kitSwitchChip: {
+    maxWidth: 200,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+    backgroundColor: tactical.zinc[900],
+  },
+  kitSwitchChipOn: {
+    borderColor: tactical.amber,
+    backgroundColor: 'rgba(255, 191, 0, 0.12)',
+  },
+  kitSwitchChipText: { color: tactical.zinc[400], fontSize: 14, fontWeight: '600' },
+  kitSwitchChipTextOn: { color: tactical.amber },
+  noKitsHint: {
+    color: tactical.zinc[500],
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
   blockRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,13 +534,13 @@ const styles = StyleSheet.create({
     borderColor: tactical.zinc[700],
     backgroundColor: tactical.zinc[900],
   },
-  bugOutRow: {
+  activeKitRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 8,
     marginBottom: 8,
   },
-  bugOutMain: {
+  activeKitMain: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -458,7 +552,7 @@ const styles = StyleSheet.create({
     borderColor: tactical.zinc[700],
     backgroundColor: tactical.zinc[900],
   },
-  bugOutEdit: {
+  activeKitEdit: {
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 14,

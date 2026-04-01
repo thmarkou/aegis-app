@@ -42,6 +42,13 @@ export function TemplateListScreen() {
 
   return (
     <View style={tacticalStyles.screen}>
+      <Text style={styles.intro}>
+        Blueprints are just templates. Copy them to your Warehouse to add actual items to your inventory.
+      </Text>
+      <Text style={styles.introSecondary}>
+        Use Warehouse → Add from Templates to copy a blueprint into your pool, or Manage blueprints here to edit
+        specs.
+      </Text>
       <FlatList
         data={templates}
         keyExtractor={(item) => item.id}
@@ -59,7 +66,7 @@ export function TemplateListScreen() {
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <Text style={tacticalStyles.emptyText}>No templates. Add one to get started.</Text>
+          <Text style={tacticalStyles.emptyText}>No blueprints yet. Tap + to create a template.</Text>
         }
       />
       <TouchableOpacity style={tacticalStyles.fab} onPress={handleAdd}>
@@ -70,5 +77,21 @@ export function TemplateListScreen() {
 }
 
 const styles = StyleSheet.create({
-  listContent: { paddingTop: 16, paddingBottom: 24 },
+  intro: {
+    color: tactical.zinc[400],
+    fontSize: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  introSecondary: {
+    color: tactical.zinc[500],
+    fontSize: 13,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    lineHeight: 18,
+  },
+  listContent: { paddingTop: 8, paddingBottom: 24 },
 });

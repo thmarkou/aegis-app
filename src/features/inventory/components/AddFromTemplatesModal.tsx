@@ -81,19 +81,19 @@ export function AddFromTemplatesModal({ visible, onClose, onAdded }: Props) {
       >
         <View style={styles.modal}>
           <View style={styles.header}>
-            <Text style={styles.title}>Add from templates</Text>
+            <Text style={styles.title}>Copy blueprint to pool</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.hint}>
-            Quick-add common items (MRE, radio, etc.) to your pool. Edit details after if needed.
+            Creates a real warehouse item from a blueprint. To edit blueprints, use Manage blueprints.
           </Text>
           <TextInput
             style={tacticalStyles.input}
             value={search}
             onChangeText={setSearch}
-            placeholder="Search templates..."
+            placeholder="Search blueprints..."
             placeholderTextColor="#666"
             autoCapitalize="none"
             autoCorrect={false}
@@ -113,7 +113,7 @@ export function AddFromTemplatesModal({ visible, onClose, onAdded }: Props) {
             )}
             ListEmptyComponent={
               <Text style={tacticalStyles.emptyText}>
-                {search.trim() ? 'No matching templates' : 'No templates. Manage catalog from this screen.'}
+                {search.trim() ? 'No matching blueprints' : 'No blueprints. Add some under Manage blueprints.'}
               </Text>
             }
           />

@@ -23,6 +23,10 @@ export default class InventoryPoolItem extends Model {
   @field('latitude') latitude!: number | null;
   @field('longitude') longitude!: number | null;
   @field('is_waypoint') isWaypoint!: boolean;
+  @field('battery_type') batteryType!: string | null;
+  @field('last_charge_at') lastChargeAt!: number | null;
+  @field('battery_capacity_mah') batteryCapacityMah!: number | null;
+  @field('charging_requirements') chargingRequirements!: string | null;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 

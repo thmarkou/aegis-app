@@ -1,11 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  StyleSheet,
+  Switch,
+} from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import type { KitIconType } from '../../../shared/types';
+import * as SecureSettings from '../../../shared/services/secureSettings';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
 const KIT_ICONS: { type: KitIconType; label: string; ionicon: keyof typeof Ionicons.glyphMap }[] = [
@@ -16,22 +27,32 @@ const KIT_ICONS: { type: KitIconType; label: string; ionicon: keyof typeof Ionic
 
 export function KitFormScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'KitForm'>>();
-  const { kitId } = route.params;
-  const navigation = useNavigation();
+  const kitId = route.params?.kitId;
+  const isCreate = kitId == null;
+  const navigation = useNavigation<NativeStackNavigationProp<SharedStackParamList, 'KitForm'>>();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [waterReservoirLiters, setWaterReservoirLiters] = useState('');
   const [iconType, setIconType] = useState<KitIconType | null>(null);
+  const [setAsActive, setSetAsActive] = useState(false);
 
   useEffect(() => {
-    database.get<Kit>('kits').find(kitId).then((k) => {
-      setName(k.name);
-      setDescription(k.description ?? '');
-      setWaterReservoirLiters(k.waterReservoirLiters != null ? String(k.waterReservoirLiters) : '');
-      setIconType((k.iconType as KitIconType) ?? null);
-    });
-  }, [kitId]);
+    if (isCreate) return;
+    database
+      .get<Kit>('kits')
+      .find(kitId)
+      .then((k) => {
+        setName(k.name);
+        setDescription(k.description ?? '');
+        setWaterReservoirLiters(k.waterReservoirLiters != null ? String(k.waterReservoirLiters) : '');
+        setIconType((k.iconType as KitIconType) ?? null);
+      })
+      .catch(() => {
+        Alert.alert('Error', 'Kit not found');
+        navigation.goBack();
+      });
+  }, [isCreate, kitId, navigation]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -43,6 +64,25 @@ export function KitFormScreen() {
       Alert.alert('Error', 'Water reservoir must be 0–20 L');
       return;
     }
+
+    if (isCreate) {
+      let newId = '';
+      await database.write(async () => {
+        const row = await database.get<Kit>('kits').create((r) => {
+          r.name = name.trim();
+          r.description = description.trim() || null;
+          r.waterReservoirLiters = waterL;
+          r.iconType = iconType;
+          r.createdAt = new Date();
+          r.updatedAt = new Date();
+        });
+        newId = row.id;
+      });
+      if (setAsActive) await SecureSettings.setActiveKitId(newId);
+      navigation.replace('KitDetail', { kitId: newId });
+      return;
+    }
+
     await database.write(async () => {
       const kit = await database.get<Kit>('kits').find(kitId);
       await kit.update((r) => {
@@ -63,7 +103,7 @@ export function KitFormScreen() {
         style={tacticalStyles.input}
         value={name}
         onChangeText={setName}
-        placeholder="e.g. 35L Vehicle EDC, 50L Home Bug-Out"
+        placeholder="Kit name"
         placeholderTextColor="#666"
       />
       <Text style={tacticalStyles.label}>Description</Text>
@@ -80,7 +120,7 @@ export function KitFormScreen() {
         style={tacticalStyles.input}
         value={waterReservoirLiters}
         onChangeText={setWaterReservoirLiters}
-        placeholder="e.g. 2 for 50L pack, 1.5 for 35L"
+        placeholder="Optional, e.g. 2"
         placeholderTextColor="#666"
         keyboardType="decimal-pad"
       />
@@ -96,13 +136,29 @@ export function KitFormScreen() {
             onPress={() => setIconType(iconType === type ? null : type)}
           >
             <Ionicons name={ionicon} size={20} color={iconType === type ? tactical.black : '#ffffff'} />
-            <Text style={[iconType === type ? tacticalStyles.categoryChipTextActive : tacticalStyles.categoryChipTextInactive, { marginLeft: 6 }]}>
+            <Text
+              style={[
+                iconType === type ? tacticalStyles.categoryChipTextActive : tacticalStyles.categoryChipTextInactive,
+                { marginLeft: 6 },
+              ]}
+            >
               {label}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
-      <TouchableOpacity style={tacticalStyles.btnPrimary} onPress={handleSave}>
+      {isCreate ? (
+        <View style={styles.setActiveRow}>
+          <Text style={styles.setActiveLabel}>Set as active</Text>
+          <Switch
+            value={setAsActive}
+            onValueChange={setSetAsActive}
+            trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
+            thumbColor={setAsActive ? tactical.black : tactical.zinc[400]}
+          />
+        </View>
+      ) : null}
+      <TouchableOpacity style={tacticalStyles.btnPrimary} onPress={() => void handleSave()}>
         <Text style={tacticalStyles.btnPrimaryText}>Save</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -118,5 +174,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 12,
+  },
+  setActiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    marginBottom: 8,
+    borderTopWidth: 1,
+    borderTopColor: tactical.zinc[900],
+  },
+  setActiveLabel: {
+    color: tactical.zinc[500],
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

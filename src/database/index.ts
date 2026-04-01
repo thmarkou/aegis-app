@@ -16,7 +16,8 @@ import IncomingStation from './models/IncomingStation';
 import PowerDevice from './models/PowerDevice';
 import MissionPreset from './models/MissionPreset';
 
-const adapter = new SQLiteAdapter({
+/** Raw adapter — use for `initializingPromise` (Compat wrapper does not expose it reliably). */
+const sqliteAdapter = new SQLiteAdapter({
   schema,
   migrations,
   jsi: true,
@@ -25,8 +26,13 @@ const adapter = new SQLiteAdapter({
   },
 });
 
+/** Wait until SQLite has finished schema setup or migrations (required before DDL/seed). */
+export async function waitForDatabaseReady(): Promise<void> {
+  await sqliteAdapter.initializingPromise;
+}
+
 export const database = new Database({
-  adapter,
+  adapter: sqliteAdapter,
   modelClasses: [
     Kit,
     InventoryPoolItem,

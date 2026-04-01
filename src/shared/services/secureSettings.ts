@@ -28,6 +28,8 @@ const KEYS = {
   activeKitId: 'aegis_active_kit_id',
   /** DB row id in `mission_presets` */
   selectedMissionPresetId: 'aegis_selected_mission_preset_id',
+  /** Months after last charge / check when next battery review is due (warehouse items). */
+  maintenanceAlertThresholdMonths: 'aegis_maintenance_alert_threshold_months',
 } as const;
 
 const DEFAULTS = {
@@ -273,6 +275,19 @@ export async function setSelectedMissionPresetId(presetRowId: string | null): Pr
     return;
   }
   await SecureStore.setItemAsync(KEYS.selectedMissionPresetId, presetRowId.trim());
+}
+
+const DEFAULT_MAINTENANCE_ALERT_MONTHS = 6;
+
+export async function getMaintenanceAlertThresholdMonths(): Promise<number> {
+  const v = await SecureStore.getItemAsync(KEYS.maintenanceAlertThresholdMonths);
+  const n = v ? parseInt(v, 10) : DEFAULT_MAINTENANCE_ALERT_MONTHS;
+  return isNaN(n) || n < 1 || n > 60 ? DEFAULT_MAINTENANCE_ALERT_MONTHS : n;
+}
+
+export async function setMaintenanceAlertThresholdMonths(months: number): Promise<void> {
+  const clamped = Math.max(1, Math.min(60, Math.round(months)));
+  await SecureStore.setItemAsync(KEYS.maintenanceAlertThresholdMonths, String(clamped));
 }
 
 export async function getGpsUpdateIntervalMs(): Promise<number> {

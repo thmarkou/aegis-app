@@ -6,7 +6,8 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { database } from './src/database';
+import { database, waitForDatabaseReady } from './src/database';
+import { ensureMissionPresetsTable } from './src/database/ensureMissionPresetsTable';
 import { TacticalSplashScreen } from './src/shared/components/TacticalSplashScreen';
 import { useAppStore } from './src/shared/store/useAppStore';
 import { TabNavigator } from './src/shared/navigation/TabNavigator';
@@ -17,7 +18,6 @@ import * as Haptics from 'expo-haptics';
 import { refreshInventoryNotifications } from './src/features/inventory/services/refreshInventoryNotifications';
 import { seedPowerDevices } from './src/database/seedPowerDevices';
 import { seedDefaultItemTemplates } from './src/database/seedItemTemplates';
-import { seedBugOutKit } from './src/database/seedBugOutKit';
 import { seedMissionPresets } from './src/database/seedMissionPresets';
 import { initGarminService } from './src/shared/services/GarminSyncService';
 import { GlobalEmergencyOverlay } from './src/shared/components/GlobalEmergencyOverlay';
@@ -55,13 +55,13 @@ export default function App() {
     let cancelled = false;
     const init = async () => {
       try {
-        const adapter = database.adapter as { initializingPromise?: Promise<void> };
-        await (adapter.initializingPromise ?? Promise.resolve());
+        await waitForDatabaseReady();
+        if (cancelled) return;
+        await ensureMissionPresetsTable(database);
         if (cancelled) return;
         await loadSettingsIntoStore();
         await seedDefaultItemTemplates();
         await seedPowerDevices();
-        await seedBugOutKit();
         await seedMissionPresets();
         refreshInventoryNotifications().catch((e) => console.warn('[AEGIS] Inventory notifications:', e));
         initGarminService().catch((e) => console.warn('[AEGIS] Garmin BLE init:', e));

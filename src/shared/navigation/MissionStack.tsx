@@ -12,6 +12,7 @@ import { ItemFormScreen } from '../../features/inventory/screens/ItemFormScreen'
 import { ProfileScreen } from '../../features/inventory/screens/ProfileScreen';
 import { ProfileFormScreen } from '../../features/inventory/screens/ProfileFormScreen';
 import { LogisticsScreen } from '../../features/inventory/screens/LogisticsScreen';
+import { PowerDeviceFormScreen } from '../../features/inventory/screens/PowerDeviceFormScreen';
 import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScreen';
 import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
 import { MissionPresetListScreen } from '../../features/inventory/screens/MissionPresetListScreen';
@@ -23,12 +24,13 @@ import { tactical } from '../tacticalStyles';
 export type MissionStackParamList = {
   MissionPrep: undefined;
   Logistics: undefined;
+  PowerDeviceForm: { deviceId?: string };
   KitList: undefined;
   KitDetail: { kitId: string; highlightedPackItemId?: string };
-  KitForm: { kitId: string };
+  KitForm: { kitId?: string };
   ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
   PoolPicker: { kitId: string };
-  InventoryPool: undefined;
+  InventoryPool: { filter?: 'needs_charge' };
   MissionPresetList: undefined;
   MissionPresetForm: { presetId?: string };
   TemplateList: undefined;
@@ -67,9 +69,22 @@ export function MissionStack() {
         })}
       />
       <Stack.Screen name="Logistics" component={LogisticsScreen} options={{ title: 'LOGISTICS' }} />
+      <Stack.Screen
+        name="PowerDeviceForm"
+        component={PowerDeviceFormScreen}
+        options={({ route }) => ({
+          title: route.params?.deviceId ? 'Edit device' : 'New device',
+        })}
+      />
       <Stack.Screen name="KitList" component={KitListScreen} options={{ title: 'Kits' }} />
       <Stack.Screen name="KitDetail" component={KitDetailScreen} options={{ title: 'Kit' }} />
-      <Stack.Screen name="KitForm" component={KitFormScreen} options={{ title: 'Edit Kit' }} />
+      <Stack.Screen
+        name="KitForm"
+        component={KitFormScreen}
+        options={({ route }) => ({
+          title: route.params?.kitId ? 'Edit Kit' : 'New Kit',
+        })}
+      />
       <Stack.Screen
         name="ItemForm"
         component={ItemFormScreen}
@@ -89,7 +104,7 @@ export function MissionStack() {
           title: route.params?.presetId ? 'Edit Preset' : 'New Preset',
         })}
       />
-      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Item Templates' }} />
+      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Blueprints' }} />
       <Stack.Screen
         name="TemplateForm"
         component={TemplateFormScreen}
