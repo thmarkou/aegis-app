@@ -1,7 +1,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export default appSchema({
-  version: 11,
+  version: 14,
   tables: [
     tableSchema({
       name: 'kits',
@@ -15,22 +15,32 @@ export default appSchema({
       ],
     }),
     tableSchema({
-      name: 'inventory_items',
+      name: 'inventory_pool_items',
       columns: [
-        { name: 'kit_id', type: 'string', isIndexed: true },
         { name: 'name', type: 'string', isIndexed: true },
-        { name: 'category', type: 'string', isIndexed: true },
+        { name: 'pool_category', type: 'string', isIndexed: true },
         { name: 'unit', type: 'string' },
         { name: 'weight_grams', type: 'number' },
         { name: 'expiry_date', type: 'number', isOptional: true },
         { name: 'calories', type: 'number', isOptional: true },
-        { name: 'quantity', type: 'number' },
+        { name: 'water_liters_per_unit', type: 'number', isOptional: true },
         { name: 'is_essential', type: 'boolean' },
         { name: 'condition', type: 'string', isOptional: true },
         { name: 'notes', type: 'string', isOptional: true },
         { name: 'barcode', type: 'string', isOptional: true, isIndexed: true },
         { name: 'latitude', type: 'number', isOptional: true },
         { name: 'longitude', type: 'number', isOptional: true },
+        { name: 'is_waypoint', type: 'boolean' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'kit_pack_items',
+      columns: [
+        { name: 'kit_id', type: 'string', isIndexed: true },
+        { name: 'pool_item_id', type: 'string', isIndexed: true },
+        { name: 'quantity', type: 'number' },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -84,6 +94,16 @@ export default appSchema({
       ],
     }),
     tableSchema({
+      name: 'power_devices',
+      columns: [
+        { name: 'slug', type: 'string', isIndexed: true },
+        { name: 'name', type: 'string' },
+        { name: 'last_full_charge_at', type: 'number', isOptional: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
       name: 'repeaters',
       columns: [
         { name: 'name', type: 'string', isIndexed: true },
@@ -96,6 +116,17 @@ export default appSchema({
         { name: 'longitude', type: 'number' },
         { name: 'is_active', type: 'boolean' },
         { name: 'type', type: 'string', isIndexed: true },
+      ],
+    }),
+    tableSchema({
+      name: 'mission_presets',
+      columns: [
+        { name: 'name', type: 'string', isIndexed: true },
+        { name: 'duration_days', type: 'number' },
+        { name: 'calories_per_day', type: 'number' },
+        { name: 'water_liters_per_day', type: 'number' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
       ],
     }),
   ],

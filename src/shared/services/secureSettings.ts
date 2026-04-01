@@ -25,6 +25,9 @@ const KEYS = {
   emergencySmsNumber: 'aegis_emergency_sms_number',
   /** Decode transmitted AFSK via mic (acoustic loopback) for modem tests */
   loopbackDecodeMode: 'aegis_loopback_decode',
+  activeKitId: 'aegis_active_kit_id',
+  /** DB row id in `mission_presets` */
+  selectedMissionPresetId: 'aegis_selected_mission_preset_id',
 } as const;
 
 const DEFAULTS = {
@@ -242,6 +245,34 @@ export async function getLoopbackDecodeMode(): Promise<boolean> {
 
 export async function setLoopbackDecodeMode(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(KEYS.loopbackDecodeMode, enabled ? 'true' : 'false');
+}
+
+export async function getActiveKitId(): Promise<string | null> {
+  const v = await SecureStore.getItemAsync(KEYS.activeKitId);
+  const t = v?.trim();
+  return t ? t : null;
+}
+
+export async function setActiveKitId(kitId: string | null): Promise<void> {
+  if (kitId == null || !kitId.trim()) {
+    await SecureStore.deleteItemAsync(KEYS.activeKitId);
+    return;
+  }
+  await SecureStore.setItemAsync(KEYS.activeKitId, kitId.trim());
+}
+
+export async function getSelectedMissionPresetId(): Promise<string | null> {
+  const v = await SecureStore.getItemAsync(KEYS.selectedMissionPresetId);
+  const t = v?.trim();
+  return t ? t : null;
+}
+
+export async function setSelectedMissionPresetId(presetRowId: string | null): Promise<void> {
+  if (presetRowId == null || !presetRowId.trim()) {
+    await SecureStore.deleteItemAsync(KEYS.selectedMissionPresetId);
+    return;
+  }
+  await SecureStore.setItemAsync(KEYS.selectedMissionPresetId, presetRowId.trim());
 }
 
 export async function getGpsUpdateIntervalMs(): Promise<number> {

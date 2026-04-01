@@ -9,12 +9,20 @@ import { ItemFormScreen } from '../../features/inventory/screens/ItemFormScreen'
 import { ProfileScreen } from '../../features/inventory/screens/ProfileScreen';
 import { ProfileFormScreen } from '../../features/inventory/screens/ProfileFormScreen';
 import { MissionPrepScreen } from '../../features/inventory/screens/MissionPrepScreen';
+import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScreen';
+import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
+import { TemplateListScreen } from '../../features/inventory/screens/TemplateListScreen';
+import { TemplateFormScreen } from '../../features/inventory/screens/TemplateFormScreen';
 
 export type InventoryStackParamList = {
   KitList: undefined;
-  KitDetail: { kitId: string; highlightedItemId?: string };
+  KitDetail: { kitId: string; highlightedPackItemId?: string };
   KitForm: { kitId: string };
-  ItemForm: { kitId: string; itemId?: string };
+  ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
+  PoolPicker: { kitId: string };
+  InventoryPool: undefined;
+  TemplateList: undefined;
+  TemplateForm: { templateId?: string };
   MissionPrep: undefined;
   Profiles: undefined;
   ProfileForm: { profileId?: string };
@@ -89,6 +97,16 @@ export function InventoryStack() {
         name="ItemForm"
         component={ItemFormScreen}
         options={{ title: 'Item', headerLargeTitle: false }}
+      />
+      <Stack.Screen name="PoolPicker" component={PoolPickerScreen} options={{ title: 'Add from Pool' }} />
+      <Stack.Screen name="InventoryPool" component={InventoryPoolScreen} options={{ title: 'Inventory Pool' }} />
+      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Item Templates' }} />
+      <Stack.Screen
+        name="TemplateForm"
+        component={TemplateFormScreen}
+        options={({ route }) => ({
+          title: route.params?.templateId ? 'Edit Template' : 'New Template',
+        })}
       />
       <Stack.Screen name="Profiles" component={ProfileScreen} options={{ title: 'Profiles' }} />
       <Stack.Screen name="ProfileForm" component={ProfileFormScreen} options={{ title: 'Profile' }} />

@@ -12,14 +12,29 @@ import { useAppStore } from './src/shared/store/useAppStore';
 import { TabNavigator } from './src/shared/navigation/TabNavigator';
 import { LoginScreen } from './src/features/auth/screens/LoginScreen';
 import { loadSettingsIntoStore } from './src/shared/store/settingsSync';
-import { scheduleExpiryNotifications } from './src/features/inventory/services/expirationNotifications';
+import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
+import { refreshInventoryNotifications } from './src/features/inventory/services/refreshInventoryNotifications';
+import { seedPowerDevices } from './src/database/seedPowerDevices';
 import { seedDefaultItemTemplates } from './src/database/seedItemTemplates';
+import { seedBugOutKit } from './src/database/seedBugOutKit';
+import { seedMissionPresets } from './src/database/seedMissionPresets';
 import { initGarminService } from './src/shared/services/GarminSyncService';
 import { GlobalEmergencyOverlay } from './src/shared/components/GlobalEmergencyOverlay';
 import { navigationRef } from './src/shared/navigation/navigationRef';
 
 function AppContent() {
   const authRole = useAppStore((s) => s.authRole);
+
+  useEffect(() => {
+    if (!authRole) return;
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      if (notification.request.content.title?.includes('AEGIS')) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+    });
+    return () => sub.remove();
+  }, [authRole]);
 
   if (!authRole) return <LoginScreen />;
 
@@ -45,7 +60,10 @@ export default function App() {
         if (cancelled) return;
         await loadSettingsIntoStore();
         await seedDefaultItemTemplates();
-        scheduleExpiryNotifications().catch((e) => console.warn('[AEGIS] Expiry notifications:', e));
+        await seedPowerDevices();
+        await seedBugOutKit();
+        await seedMissionPresets();
+        refreshInventoryNotifications().catch((e) => console.warn('[AEGIS] Inventory notifications:', e));
         initGarminService().catch((e) => console.warn('[AEGIS] Garmin BLE init:', e));
       } catch (err) {
         console.error('[AEGIS] DB init failed:', err);

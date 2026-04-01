@@ -366,6 +366,41 @@
 
 ---
 
+## 2026-04-02 (Πέμπτη) – Centralized Inventory Pool, Dynamic Mission Planner, Templates
+
+### Στόχος
+Αποθήκη ειδών ανεξάρτητη από kits, σύνδεση kit ↔ pool μέσω γραμμών pack, σύμβουλος αποστολής με προσαρμοσίσιμα presets, και μεταφορά διαχείρισης templates από Settings στο Global Inventory Pool.
+
+### Database (schema v13 → v14)
+- **v13**: Πίνακες `inventory_pool_items` (κατηγορία πισίνας, `water_liters_per_unit`, `is_waypoint`, κ.λπ.) και `kit_pack_items` (`kit_id`, `pool_item_id`, `quantity`). Migration SQL από legacy `inventory_items` → pool + pack, μετά `DROP` παλιού πίνακα.
+- **v14**: Πίνακας `mission_presets` (`name`, `duration_days`, `calories_per_day`, `water_liters_per_day`). Model `MissionPreset`, `seedMissionPresets()` (default Overnight / 3-Day Bug-Out / Week Hunt + migration παλιού enum `aegis_mission_preset` → επιλεγμένο row id).
+- Models: `InventoryPoolItem`, `KitPackItem`· αφαίρεση `InventoryItem`. `Kit` → `packItems`.
+
+### Λογική & υπηρεσίες
+- `poolCategories.ts`: σταθερές κατηγορίες πισίνας (tools, consumables, medical, shelter_clothing, comms_nav).
+- `missionReadiness.ts`: `computeKitNutritionTotals`, `formatReadinessAgainstPreset` με στόχους `duration × kcal/day` και `duration × L/day` + νερό δεξαμενής kit.
+- `secureSettings`: `activeKitId`, `selectedMissionPresetId` (αντί στατικών preset keys).
+
+### UI – MISSION / Logistics
+- **MissionPrepScreen**: τρεις ενότητες (Power & Devices, Active Kits, Global Pool), επιλογή **active kit**, **dynamic mission presets** από DB, readiness γραμμή, **Edit Presets** (inline + header), **35L Bug-Out** με ξεχωριστό κουμπί επεξεργασίας kit (`KitForm`).
+- **MissionPresetListScreen** / **MissionPresetFormScreen**: CRUD presets (διάρκεια ημερών, kcal/ημέρα, L νερού/ημέρα).
+- **KitDetailScreen**: λίστα γραμμών pack, **Add from Pool** → `PoolPickerScreen` (ανά κατηγορία).
+- **InventoryPoolScreen**: **Add from Templates** (modal → δημιουργία pool item από `item_templates`), **Manage templates** → `TemplateList` / `TemplateForm`.
+- **AddFromTemplatesModal**, μετακίνηση **TemplateList/TemplateForm** σε **MissionStack** και **InventoryStack** (αφαίρεση από Settings stack).
+
+### Settings
+- Αφαίρεση ενότητας **Manage Templates** από `SettingsScreen`· `SettingsStack` μόνο `Settings`.
+
+### Λοιπά
+- `seedBugOutKit`: εξασφάλιση kit **35L Bug-Out**.
+- Map / dashboard / notifications / APRS inventory status: ανάγνωση από `inventory_pool_items` (και packs όπου χρειάζεται βάρος).
+- `App.tsx`: `seedBugOutKit`, `seedMissionPresets` μετά το DB init.
+
+### Git
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub.
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

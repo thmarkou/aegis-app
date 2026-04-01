@@ -29,30 +29,6 @@ export interface Kit {
   updatedAt: string;
 }
 
-export type ItemCategory =
-  | 'water'
-  | 'food'
-  | 'medical'
-  | 'shelter'
-  | 'tools'
-  | 'communication'
-  | 'power'
-  | 'other';
-
-export interface InventoryItem {
-  id: string;
-  kitId: string;
-  name: string;
-  category: ItemCategory;
-  quantity: number;
-  unit: string;
-  expiryDate: string | null;
-  weightGrams: number;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface ScalingRule {
   waterLitersPerPersonPerDay: number;
   caloriesPerPersonPerDay: number;

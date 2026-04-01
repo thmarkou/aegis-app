@@ -3,13 +3,14 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet 
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { database } from '../../../database';
 import type ItemTemplate from '../../../database/models/ItemTemplate';
-import type { SettingsStackParamList } from '../../../shared/navigation/SettingsStack';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
 const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio', 'Vehicle', 'Base Camp'];
 
+type TemplateFormParams = { TemplateForm: { templateId?: string } };
+
 export function TemplateFormScreen() {
-  const route = useRoute<RouteProp<SettingsStackParamList, 'TemplateForm'>>();
+  const route = useRoute<RouteProp<TemplateFormParams, 'TemplateForm'>>();
   const { templateId } = route.params ?? {};
   const navigation = useNavigation();
 

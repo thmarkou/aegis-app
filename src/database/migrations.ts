@@ -1,4 +1,9 @@
-import { schemaMigrations, createTable, addColumns } from '@nozbe/watermelondb/Schema/migrations';
+import {
+  schemaMigrations,
+  createTable,
+  addColumns,
+  unsafeExecuteSql,
+} from '@nozbe/watermelondb/Schema/migrations';
 
 export default schemaMigrations({
   migrations: [
@@ -119,6 +124,112 @@ export default schemaMigrations({
         addColumns({
           table: 'inventory_items',
           columns: [{ name: 'barcode', type: 'string', isOptional: true, isIndexed: true }],
+        }),
+      ],
+    },
+    {
+      toVersion: 12,
+      steps: [
+        createTable({
+          name: 'power_devices',
+          columns: [
+            { name: 'slug', type: 'string', isIndexed: true },
+            { name: 'name', type: 'string' },
+            { name: 'last_full_charge_at', type: 'number', isOptional: true },
+            { name: 'created_at', type: 'number' },
+            { name: 'updated_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 13,
+      steps: [
+        createTable({
+          name: 'inventory_pool_items',
+          columns: [
+            { name: 'name', type: 'string', isIndexed: true },
+            { name: 'pool_category', type: 'string', isIndexed: true },
+            { name: 'unit', type: 'string' },
+            { name: 'weight_grams', type: 'number' },
+            { name: 'expiry_date', type: 'number', isOptional: true },
+            { name: 'calories', type: 'number', isOptional: true },
+            { name: 'water_liters_per_unit', type: 'number', isOptional: true },
+            { name: 'is_essential', type: 'boolean' },
+            { name: 'condition', type: 'string', isOptional: true },
+            { name: 'notes', type: 'string', isOptional: true },
+            { name: 'barcode', type: 'string', isOptional: true, isIndexed: true },
+            { name: 'latitude', type: 'number', isOptional: true },
+            { name: 'longitude', type: 'number', isOptional: true },
+            { name: 'is_waypoint', type: 'boolean' },
+            { name: 'created_at', type: 'number' },
+            { name: 'updated_at', type: 'number' },
+          ],
+        }),
+        createTable({
+          name: 'kit_pack_items',
+          columns: [
+            { name: 'kit_id', type: 'string', isIndexed: true },
+            { name: 'pool_item_id', type: 'string', isIndexed: true },
+            { name: 'quantity', type: 'number' },
+            { name: 'created_at', type: 'number' },
+            { name: 'updated_at', type: 'number' },
+          ],
+        }),
+        unsafeExecuteSql(
+          `INSERT INTO inventory_pool_items (
+            id, name, pool_category, unit, weight_grams, expiry_date, calories, water_liters_per_unit,
+            is_essential, condition, notes, barcode, latitude, longitude, is_waypoint, created_at, updated_at
+          )
+          SELECT
+            id,
+            name,
+            CASE
+              WHEN LOWER(category) IN ('food', 'water') THEN 'consumables'
+              WHEN LOWER(category) = 'medical' THEN 'medical'
+              WHEN LOWER(category) = 'radio' THEN 'comms_nav'
+              WHEN LOWER(category) IN ('vehicle', 'base camp') THEN 'shelter_clothing'
+              ELSE 'tools'
+            END,
+            unit,
+            weight_grams,
+            expiry_date,
+            calories,
+            CASE
+              WHEN LOWER(category) = 'water' OR LOWER(name) LIKE '%water%' OR LOWER(name) LIKE '%1l%' THEN 1.0
+              ELSE NULL
+            END,
+            is_essential,
+            condition,
+            notes,
+            barcode,
+            latitude,
+            longitude,
+            CASE WHEN LOWER(category) IN ('base camp', 'vehicle') THEN 1 ELSE 0 END,
+            created_at,
+            updated_at
+          FROM inventory_items`
+        ),
+        unsafeExecuteSql(
+          `INSERT INTO kit_pack_items (id, kit_id, pool_item_id, quantity, created_at, updated_at)
+          SELECT id || '_kpack', kit_id, id, quantity, created_at, updated_at FROM inventory_items`
+        ),
+        unsafeExecuteSql('DROP TABLE inventory_items'),
+      ],
+    },
+    {
+      toVersion: 14,
+      steps: [
+        createTable({
+          name: 'mission_presets',
+          columns: [
+            { name: 'name', type: 'string', isIndexed: true },
+            { name: 'duration_days', type: 'number' },
+            { name: 'calories_per_day', type: 'number' },
+            { name: 'water_liters_per_day', type: 'number' },
+            { name: 'created_at', type: 'number' },
+            { name: 'updated_at', type: 'number' },
+          ],
         }),
       ],
     },

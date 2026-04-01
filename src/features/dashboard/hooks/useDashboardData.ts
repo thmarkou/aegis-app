@@ -4,10 +4,13 @@ import * as Battery from 'expo-battery';
 import { Pedometer } from 'expo-sensors';
 import NetInfo from '@react-native-community/netinfo';
 import { database } from '../../../database';
-import type InventoryItem from '../../../database/models/InventoryItem';
+import type KitPackItem from '../../../database/models/KitPackItem';
+import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { haversineKm, bearingDeg } from '../../../shared/utils/geoUtils';
 import { fetchWeatherForLocation } from '../services/weatherService';
+import { PROACTIVE_EXPIRY_DAYS } from '../../../services/inventoryAprsStatus';
+import { getStalePowerDeviceCount } from '../../../services/powerLogisticsStatus';
 
 const MISSION_KEYS = [
   'missionCheck_radiosCharged',
@@ -30,15 +33,14 @@ export function useDashboardData() {
   const [stepsToday, setStepsToday] = useState<number | null>(null);
   const [distWalkedKm, setDistWalkedKm] = useState<number | null>(null);
   const [weather, setWeather] = useState<{ tempC: number; windKmh: number } | null>(null);
+  const [maintenanceExpiringSoon, setMaintenanceExpiringSoon] = useState(0);
+  const [maintenanceStalePower, setMaintenanceStalePower] = useState(0);
 
   const load = useCallback(async () => {
     const now = Date.now();
     const warnThreshold = now + EXPIRY_WARN_DAYS * 24 * 60 * 60 * 1000;
 
-    const items = await database
-      .get<InventoryItem>('inventory_items')
-      .query()
-      .fetch();
+    const packs = await database.get<KitPackItem>('kit_pack_items').query().fetch();
 
     let missionChecksDone = 0;
     for (const key of MISSION_KEYS) {
@@ -49,27 +51,34 @@ export function useDashboardData() {
     const missionPct = (missionChecksDone / MISSION_KEYS.length) * 100;
     setReadinessScore(missionPct);
 
-    const totalGrams = items.reduce((sum, i) => sum + i.quantity * i.weightGrams, 0);
+    let totalGrams = 0;
+    for (const p of packs) {
+      const pool: InventoryPoolItem = await p.poolItem.fetch();
+      totalGrams += p.quantity * pool.weightGrams;
+    }
     setTotalWeightKg(totalGrams / 1000);
 
     const batt = await Battery.getBatteryLevelAsync();
     setBatteryPct(Math.round(batt * 100));
 
     let expCount = 0;
-    for (const item of items) {
+    const thirtyHorizon = now + PROACTIVE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    let expiringSoon = 0;
+    const poolItems = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
+    for (const item of poolItems) {
       if (item.expiryDate) {
         const exp = item.expiryDate;
         if (exp <= now) expCount++;
         else if (exp <= warnThreshold) expCount++;
+        if (exp > now && exp <= thirtyHorizon) expiringSoon++;
       }
     }
     setExpAlerts(expCount);
+    setMaintenanceExpiringSoon(expiringSoon);
+    setMaintenanceStalePower(await getStalePowerDeviceCount());
 
-    const waypoints = items.filter(
-      (i) =>
-        (i.category === 'Base Camp' || i.category === 'Vehicle') &&
-        i.latitude != null &&
-        i.longitude != null
+    const waypoints = poolItems.filter(
+      (i) => i.isWaypoint && i.latitude != null && i.longitude != null
     );
 
     let loc: { lat: number; lon: number; alt?: number } | null = null;
@@ -146,6 +155,8 @@ export function useDashboardData() {
     stepsToday,
     distWalkedKm,
     weather,
+    maintenanceExpiringSoon,
+    maintenanceStalePower,
     refresh: load,
   };
 }

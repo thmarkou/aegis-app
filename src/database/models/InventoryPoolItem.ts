@@ -1,30 +1,30 @@
-import { Model, Relation } from '@nozbe/watermelondb';
-import { field, date, relation } from '@nozbe/watermelondb/decorators';
-import type Kit from './Kit';
+import { Model, Query } from '@nozbe/watermelondb';
+import { field, date, children } from '@nozbe/watermelondb/decorators';
+import type KitPackItem from './KitPackItem';
 
-export default class InventoryItem extends Model {
-  static table = 'inventory_items';
+export default class InventoryPoolItem extends Model {
+  static table = 'inventory_pool_items';
 
   static associations = {
-    kits: { type: 'belongs_to' as const, key: 'kit_id' },
+    kit_pack_items: { type: 'has_many' as const, foreignKey: 'pool_item_id' },
   };
 
-  @field('kit_id') kitId!: string;
   @field('name') name!: string;
-  @field('category') category!: string;
+  @field('pool_category') poolCategory!: string;
   @field('unit') unit!: string;
   @field('weight_grams') weightGrams!: number;
   @field('expiry_date') expiryDate!: number | null;
   @field('calories') calories!: number | null;
-  @field('quantity') quantity!: number;
+  @field('water_liters_per_unit') waterLitersPerUnit!: number | null;
   @field('is_essential') isEssential!: boolean;
   @field('condition') condition!: string | null;
   @field('notes') notes!: string | null;
   @field('barcode') barcode!: string | null;
   @field('latitude') latitude!: number | null;
   @field('longitude') longitude!: number | null;
+  @field('is_waypoint') isWaypoint!: boolean;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 
-  @relation('kits', 'kit_id') kit!: Relation<Kit>;
+  @children('kit_pack_items') packs!: Query<KitPackItem>;
 }

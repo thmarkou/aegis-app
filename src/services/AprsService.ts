@@ -10,16 +10,23 @@ export interface AprsPosition {
   comment?: string;
 }
 
-/** Compact telemetry for APRS comment: AEGIS: HR:85 INV:OK */
+export type PowerTelemetryStatus = 'OK' | 'LOW';
+
+/** Compact telemetry: AEGIS: HR:85 INV:WARN PWR:LOW */
 export function buildAegisTelemetryComment(
   heartRateBpm: number | null | undefined,
-  inventoryStatus: 'OK' | 'WARN' | 'LOW'
+  inventoryStatus: 'OK' | 'WARN' | 'LOW',
+  powerStatus?: PowerTelemetryStatus
 ): string {
   const hr =
     heartRateBpm != null && heartRateBpm > 0 && heartRateBpm < 300
       ? String(Math.round(heartRateBpm))
       : '--';
-  return `AEGIS: HR:${hr} INV:${inventoryStatus}`;
+  let s = `AEGIS: HR:${hr} INV:${inventoryStatus}`;
+  if (powerStatus === 'LOW') {
+    s += ' PWR:LOW';
+  }
+  return s;
 }
 
 /** Conservative limit for SMS body in SMSGTE/APRS message text. */

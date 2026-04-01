@@ -25,6 +25,8 @@ import {
 } from '../services/TileCacheService';
 import { database } from '../../../database';
 import type IncomingStation from '../../../database/models/IncomingStation';
+import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
+import type Repeater from '../../../database/models/Repeater';
 import { Q } from '@nozbe/watermelondb';
 import { getCategoryIcon } from '../utils/categoryIcons';
 import { useBatteryTelemetry } from '../../../shared/hooks/useBatteryTelemetry';
@@ -90,9 +92,10 @@ export function MapScreen() {
   >([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const autoCacheRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const route = useRoute<{
-    params?: { focusItemId?: string; focusOnNewStation?: boolean; centerOnUser?: boolean };
-  }>();
+  const route = useRoute();
+  const routeParams = route.params as
+    | { focusItemId?: string; focusOnNewStation?: boolean; centerOnUser?: boolean }
+    | undefined;
   const navigation = useNavigation();
   const { pct: batteryPct, battColor, powerSaveMode } = useBatteryTelemetry();
   const isGlobalEmergency = useAppStore((s) => s.isGlobalEmergency);
@@ -112,14 +115,27 @@ export function MapScreen() {
       if (openCallout) {
         setTimeout(() => {
           const ref = stationMarkerRefs.current[newest.id];
-          if (ref && typeof (ref as { showCallout?: () => void }).showCallout === 'function') {
-            (ref as { showCallout: () => void }).showCallout();
+          if (ref && typeof (ref as unknown as { showCallout?: () => void }).showCallout === 'function') {
+            (ref as unknown as { showCallout: () => void }).showCallout();
           }
         }, 600);
       }
     },
     [incomingStations]
   );
+
+  const recenter = useCallback(() => {
+    if (!location || !mapRef.current) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: location.lat,
+        longitude: location.lon,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500
+    );
+  }, [location]);
 
   const loadCallsign = useCallback(async () => {
     const [callsign, ssid] = await Promise.all([
@@ -178,7 +194,7 @@ export function MapScreen() {
 
   useEffect(() => {
     const loadRepeaters = async () => {
-      const rows = await database.get('repeaters').query(Q.where('is_active', true)).fetch();
+      const rows = await database.get<Repeater>('repeaters').query(Q.where('is_active', true)).fetch();
       setRepeaters(
         rows.map((r) => ({
           id: r.id,
@@ -248,13 +264,13 @@ export function MapScreen() {
   }, [loadIncomingStations]);
 
   const loadInventoryWaypoints = useCallback(async () => {
-    const rows = await database.get('inventory_items').query().fetch();
+    const rows = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
     const waypoints = rows
       .filter((r) => r.latitude != null && r.longitude != null)
       .map((r) => ({
         id: r.id,
         name: r.name,
-        category: r.category,
+        category: r.poolCategory,
         lat: r.latitude!,
         lon: r.longitude!,
       }));
@@ -268,14 +284,14 @@ export function MapScreen() {
 
   // Auto-center when navigating from Comms after Loopback Test (wait for stations + map render)
   useEffect(() => {
-    if (route.params?.focusOnNewStation && incomingStations.length > 0) {
+    if (routeParams?.focusOnNewStation && incomingStations.length > 0) {
       const t = setTimeout(() => {
         centerOnNewestStation(true);
         navigation.setParams({ focusOnNewStation: false } as never);
       }, 300);
       return () => clearTimeout(t);
     }
-  }, [route.params?.focusOnNewStation, incomingStations.length, centerOnNewestStation, navigation]);
+  }, [routeParams?.focusOnNewStation, incomingStations.length, centerOnNewestStation, navigation]);
 
   // Auto-center when new station added while Map is visible (skip initial load 0->N)
   useEffect(() => {
@@ -288,16 +304,16 @@ export function MapScreen() {
 
   // Center on user when navigating from Emergency Broadcast
   useEffect(() => {
-    if (route.params?.centerOnUser && location && mapRef.current) {
+    if (routeParams?.centerOnUser && location && mapRef.current) {
       recenter();
       navigation.setParams({ centerOnUser: false } as never);
     }
-  }, [route.params?.centerOnUser, location, recenter, navigation]);
+  }, [routeParams?.centerOnUser, location, recenter, navigation]);
 
   useFocusEffect(
     useCallback(() => {
       // Stations load reactively via observe(); only waypoints/focus here
-      const focusId = route.params?.focusItemId;
+      const focusId = routeParams?.focusItemId;
       loadInventoryWaypoints().then((waypoints) => {
         if (focusId) {
           setSelectedItemId(focusId);
@@ -312,21 +328,8 @@ export function MapScreen() {
           }
         }
       });
-    }, [route.params?.focusItemId, loadInventoryWaypoints])
+    }, [routeParams?.focusItemId, loadInventoryWaypoints])
   );
-
-  const recenter = useCallback(() => {
-    if (!location || !mapRef.current) return;
-    mapRef.current.animateToRegion(
-      {
-        latitude: location.lat,
-        longitude: location.lon,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      },
-      500
-    );
-  }, [location]);
 
   const handleRegionChangeComplete = useCallback(
     (reg: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }) => {
@@ -419,13 +422,7 @@ export function MapScreen() {
         onRegionChangeComplete={handleRegionChangeComplete}
       >
         {isOffline ? (
-          <LocalTile
-            pathTemplate={localPathTemplate}
-            tileSize={256}
-            zIndex={1}
-            minimumZ={MIN_ZOOM}
-            maximumZ={MAX_ZOOM}
-          />
+          <LocalTile pathTemplate={localPathTemplate} tileSize={256} zIndex={1} />
         ) : (
           <UrlTile
             urlTemplate={tileUrlTemplate}

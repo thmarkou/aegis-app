@@ -3,9 +3,11 @@
  */
 export type SharedStackParamList = {
   KitList: undefined;
-  KitDetail: { kitId: string; highlightedItemId?: string };
+  KitDetail: { kitId: string; highlightedPackItemId?: string };
   KitForm: { kitId: string };
-  ItemForm: { kitId: string; itemId?: string };
+  ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
+  PoolPicker: { kitId: string };
+  InventoryPool: undefined;
   Profiles: undefined;
   ProfileForm: { profileId?: string };
 };

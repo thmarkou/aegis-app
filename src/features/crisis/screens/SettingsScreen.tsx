@@ -161,18 +161,6 @@ export function SettingsScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={tacticalStyles.sectionTitle}>Inventory Templates</Text>
-      <Text style={tacticalStyles.sectionDesc}>
-        Manage item templates. Use them when adding items to quickly fill name, category, and weight.
-      </Text>
-      <TouchableOpacity
-        style={[tacticalStyles.btnSecondary, { flexDirection: 'row', alignItems: 'center' }]}
-        onPress={() => navigation.navigate('TemplateList')}
-      >
-        <Ionicons name="layers-outline" size={18} color="#FFBF00" />
-        <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>Manage Templates</Text>
-      </TouchableOpacity>
-
       <Text style={tacticalStyles.sectionTitle}>Sort by Expiry</Text>
       <Text style={tacticalStyles.sectionDesc}>
         In kit detail, sort items by expiry date (soonest first).

@@ -1,13 +1,12 @@
-import { Q } from '@nozbe/watermelondb';
 import { Model, Query } from '@nozbe/watermelondb';
 import { field, date, children } from '@nozbe/watermelondb/decorators';
-import type InventoryItem from './InventoryItem';
+import type KitPackItem from './KitPackItem';
 
 export default class Kit extends Model {
   static table = 'kits';
 
   static associations = {
-    inventory_items: { type: 'has_many' as const, foreignKey: 'kit_id' },
+    kit_pack_items: { type: 'has_many' as const, foreignKey: 'kit_id' },
   };
 
   @field('name') name!: string;
@@ -17,5 +16,5 @@ export default class Kit extends Model {
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 
-  @children('inventory_items') items!: Query<InventoryItem>;
+  @children('kit_pack_items') packItems!: Query<KitPackItem>;
 }

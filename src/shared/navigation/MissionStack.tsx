@@ -2,6 +2,7 @@
  * MISSION tab – Mission Prep checklist as root.
  */
 import React from 'react';
+import { Text, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MissionPrepScreen } from '../../features/inventory/screens/MissionPrepScreen';
 import { KitListScreen } from '../../features/inventory/screens/KitListScreen';
@@ -10,13 +11,28 @@ import { KitFormScreen } from '../../features/inventory/screens/KitFormScreen';
 import { ItemFormScreen } from '../../features/inventory/screens/ItemFormScreen';
 import { ProfileScreen } from '../../features/inventory/screens/ProfileScreen';
 import { ProfileFormScreen } from '../../features/inventory/screens/ProfileFormScreen';
+import { LogisticsScreen } from '../../features/inventory/screens/LogisticsScreen';
+import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScreen';
+import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
+import { MissionPresetListScreen } from '../../features/inventory/screens/MissionPresetListScreen';
+import { MissionPresetFormScreen } from '../../features/inventory/screens/MissionPresetFormScreen';
+import { TemplateListScreen } from '../../features/inventory/screens/TemplateListScreen';
+import { TemplateFormScreen } from '../../features/inventory/screens/TemplateFormScreen';
+import { tactical } from '../tacticalStyles';
 
 export type MissionStackParamList = {
   MissionPrep: undefined;
+  Logistics: undefined;
   KitList: undefined;
-  KitDetail: { kitId: string; highlightedItemId?: string };
+  KitDetail: { kitId: string; highlightedPackItemId?: string };
   KitForm: { kitId: string };
-  ItemForm: { kitId: string; itemId?: string };
+  ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
+  PoolPicker: { kitId: string };
+  InventoryPool: undefined;
+  MissionPresetList: undefined;
+  MissionPresetForm: { presetId?: string };
+  TemplateList: undefined;
+  TemplateForm: { templateId?: string };
   Profiles: undefined;
   ProfileForm: { profileId?: string };
 };
@@ -37,8 +53,20 @@ export function MissionStack() {
       <Stack.Screen
         name="MissionPrep"
         component={MissionPrepScreen}
-        options={{ title: 'MISSION PREP' }}
+        options={({ navigation }) => ({
+          title: 'MISSION PREP',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('MissionPresetList')}
+              style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ color: tactical.amber, fontSize: 14, fontWeight: '600' }}>Edit Presets</Text>
+            </TouchableOpacity>
+          ),
+        })}
       />
+      <Stack.Screen name="Logistics" component={LogisticsScreen} options={{ title: 'LOGISTICS' }} />
       <Stack.Screen name="KitList" component={KitListScreen} options={{ title: 'Kits' }} />
       <Stack.Screen name="KitDetail" component={KitDetailScreen} options={{ title: 'Kit' }} />
       <Stack.Screen name="KitForm" component={KitFormScreen} options={{ title: 'Edit Kit' }} />
@@ -46,6 +74,28 @@ export function MissionStack() {
         name="ItemForm"
         component={ItemFormScreen}
         options={{ title: 'Item' }}
+      />
+      <Stack.Screen name="PoolPicker" component={PoolPickerScreen} options={{ title: 'Add from Pool' }} />
+      <Stack.Screen name="InventoryPool" component={InventoryPoolScreen} options={{ title: 'Inventory Pool' }} />
+      <Stack.Screen
+        name="MissionPresetList"
+        component={MissionPresetListScreen}
+        options={{ title: 'Mission Presets' }}
+      />
+      <Stack.Screen
+        name="MissionPresetForm"
+        component={MissionPresetFormScreen}
+        options={({ route }) => ({
+          title: route.params?.presetId ? 'Edit Preset' : 'New Preset',
+        })}
+      />
+      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Item Templates' }} />
+      <Stack.Screen
+        name="TemplateForm"
+        component={TemplateFormScreen}
+        options={({ route }) => ({
+          title: route.params?.templateId ? 'Edit Template' : 'New Template',
+        })}
       />
       <Stack.Screen name="Profiles" component={ProfileScreen} options={{ title: 'Profiles' }} />
       <Stack.Screen name="ProfileForm" component={ProfileFormScreen} options={{ title: 'Profile' }} />

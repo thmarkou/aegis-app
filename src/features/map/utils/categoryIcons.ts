@@ -10,13 +10,24 @@ export function getCategoryIcon(category: string, name: string): IoniconName {
   if (n.includes('base camp') || n.includes('camp') || n.includes('tent')) return 'home';
   if (n.includes('cache') || n.includes('supply')) return 'cube';
   switch (category) {
-    case 'Food': return 'restaurant';
-    case 'Water': return 'water';
-    case 'Medical': return 'medkit';
-    case 'Radio': return 'radio';
-    case 'Vehicle': return 'car';
-    case 'Base Camp': return 'home';
+    case 'consumables':
+    case 'Food':
+      return 'restaurant';
+    case 'Water':
+      return 'water';
+    case 'medical':
+    case 'Medical':
+      return 'medkit';
+    case 'comms_nav':
+    case 'Radio':
+      return 'radio';
+    case 'shelter_clothing':
+    case 'Vehicle':
+    case 'Base Camp':
+      return 'home';
+    case 'tools':
     case 'Gear':
-    default: return 'cube';
+    default:
+      return 'cube';
   }
 }

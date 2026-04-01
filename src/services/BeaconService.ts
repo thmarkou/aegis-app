@@ -13,6 +13,7 @@ import { routeDecodedPacket } from './DecodedPacketRouter';
 import { playAFSKPacket } from './AudioEngine';
 import * as SecureSettings from '../shared/services/secureSettings';
 import { getInventoryAprsStatus } from './inventoryAprsStatus';
+import { getPowerAprsStatus } from './powerLogisticsStatus';
 import { CACHE_TTL_MS, useGarminStore } from '../shared/store/useGarminStore';
 
 export type SendBeaconResult =
@@ -32,13 +33,14 @@ export async function sendEmergencySmsgte(
   options: SendBeaconOptions = {}
 ): Promise<SendBeaconResult> {
   try {
-    const [callsign, ssid, txDelayMs, digitalGain, phone, invStatus] = await Promise.all([
+    const [callsign, ssid, txDelayMs, digitalGain, phone, invStatus, powerStatus] = await Promise.all([
       SecureSettings.getCallsign(),
       SecureSettings.getSsid(),
       SecureSettings.getTxDelayMs(),
       SecureSettings.getDigitalGain(),
       SecureSettings.getEmergencySmsNumber(),
       getInventoryAprsStatus(),
+      getPowerAprsStatus(),
     ]);
     if (!phone?.trim()) {
       return { success: false, error: 'Emergency SMS number not set (Settings)' };
@@ -49,7 +51,11 @@ export async function sendEmergencySmsgte(
         ? g.cachedHeartRate
         : null;
     const heartRateBpm = g.heartRate ?? hrCached;
-    const telemetry = buildAegisTelemetryComment(heartRateBpm, invStatus);
+    const telemetry = buildAegisTelemetryComment(
+      heartRateBpm,
+      invStatus,
+      powerStatus === 'LOW' ? 'LOW' : undefined
+    );
     const text = buildSmsgteMessageWithTelemetry(message, telemetry);
     if (!text.trim()) {
       return { success: false, error: 'Message is empty' };
@@ -83,13 +89,14 @@ export async function sendBeaconWithUserGps(
       accuracy: Location.Accuracy.Balanced,
     });
 
-    const [callsign, ssid, testMode, txDelayMs, digitalGain, invStatus] = await Promise.all([
+    const [callsign, ssid, testMode, txDelayMs, digitalGain, invStatus, powerStatus] = await Promise.all([
       SecureSettings.getCallsign(),
       SecureSettings.getSsid(),
       SecureSettings.getTestMode(),
       SecureSettings.getTxDelayMs(),
       SecureSettings.getDigitalGain(),
       getInventoryAprsStatus(),
+      getPowerAprsStatus(),
     ]);
 
     const g = useGarminStore.getState();
@@ -99,7 +106,11 @@ export async function sendBeaconWithUserGps(
         ? g.cachedHeartRate
         : null;
     const heartRateBpm = hrLive ?? hrCached;
-    const telemetry = buildAegisTelemetryComment(heartRateBpm, invStatus);
+    const telemetry = buildAegisTelemetryComment(
+      heartRateBpm,
+      invStatus,
+      powerStatus === 'LOW' ? 'LOW' : undefined
+    );
     const comment = testMode ? `TEST: ${telemetry}` : telemetry;
 
     const packet = buildPositionPacket(

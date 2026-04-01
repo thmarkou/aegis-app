@@ -4,10 +4,11 @@ import { useNavigation } from '@react-navigation/native';
 import { database } from '../../../database';
 import type ItemTemplate from '../../../database/models/ItemTemplate';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { SettingsStackParamList } from '../../../shared/navigation/SettingsStack';
+import type { MissionStackParamList } from '../../../shared/navigation/MissionStack';
+import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 
-type Nav = NativeStackNavigationProp<SettingsStackParamList>;
+type Nav = NativeStackNavigationProp<MissionStackParamList | InventoryStackParamList>;
 
 export function TemplateListScreen() {
   const navigation = useNavigation<Nav>();

@@ -1,38 +1,58 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Switch, ActivityIndicator, Platform } from 'react-native';
+import * as Location from 'expo-location';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  StyleSheet,
+  Switch,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
-import type InventoryItem from '../../../database/models/InventoryItem';
+import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
+import type KitPackItem from '../../../database/models/KitPackItem';
+import type ItemTemplate from '../../../database/models/ItemTemplate';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { TemplatePicker, type TemplatePickResult } from '../components/TemplatePicker';
 import { BarcodeScannerModal, type BarcodeScanResult } from '../components/BarcodeScannerModal';
-import type ItemTemplate from '../../../database/models/ItemTemplate';
+import { refreshInventoryNotifications } from '../services/refreshInventoryNotifications';
+import {
+  POOL_CATEGORY_KEYS,
+  POOL_CATEGORY_LABELS,
+  mapLegacyCategoryToPoolCategory,
+  type PoolCategory,
+} from '../../../shared/constants/poolCategories';
 
-const CATEGORIES = ['Food', 'Water', 'Medical', 'Gear', 'Radio', 'Vehicle', 'Base Camp'];
 const CONDITIONS = ['New', 'Used'] as const;
 
 export function ItemFormScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'ItemForm'>>();
-  const { kitId, itemId } = route.params;
+  const { kitId, poolItemId, packItemId } = route.params ?? {};
   const navigation = useNavigation();
 
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Gear');
+  const [poolCategory, setPoolCategory] = useState<PoolCategory>('tools');
   const [quantity, setQuantity] = useState('1');
   const [unit, setUnit] = useState('pcs');
   const [expiryDate, setExpiryDate] = useState('');
   const [weightGrams, setWeightGrams] = useState('');
   const [calories, setCalories] = useState('');
+  const [waterLitersPerUnit, setWaterLitersPerUnit] = useState('');
   const [condition, setCondition] = useState<string | null>(null);
   const [isEssential, setIsEssential] = useState(false);
   const [notes, setNotes] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [isWaypoint, setIsWaypoint] = useState(false);
   const [taggingLocation, setTaggingLocation] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
@@ -40,64 +60,118 @@ export function ItemFormScreen() {
   const [barcode, setBarcode] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  const isNewInKit = kitId != null && packItemId == null && poolItemId == null;
+  const isPoolOnlyEdit = poolItemId != null && kitId == null;
+  const isNewPoolOnly =
+    kitId == null && poolItemId == null && packItemId == null;
+
   useEffect(() => {
-    if (!itemId) return;
-    database.get<InventoryItem>('inventory_items').find(itemId).then((item) => {
-      setName(item.name);
-      setCategory(item.category);
-      setQuantity(String(item.quantity));
-      setUnit(item.unit);
-      setExpiryDate(item.expiryDate ? new Date(item.expiryDate).toISOString().slice(0, 10) : '');
-      setWeightGrams(String(item.weightGrams));
-      setCalories(item.calories != null ? String(item.calories) : '');
-      setCondition(item.condition ? item.condition.charAt(0).toUpperCase() + item.condition.slice(1) : null);
-      setIsEssential(item.isEssential);
-      setNotes(item.notes ?? '');
-      setLatitude(item.latitude ?? null);
-      setLongitude(item.longitude ?? null);
-      setBarcode(item.barcode ?? null);
-    });
-  }, [itemId]);
+    if (!poolItemId && !packItemId) return;
+
+    const load = async () => {
+      if (packItemId) {
+        const pack = await database.get<KitPackItem>('kit_pack_items').find(packItemId);
+        const pool = await pack.poolItem.fetch();
+        setQuantity(String(pack.quantity));
+        applyPoolToForm(pool);
+        return;
+      }
+      if (poolItemId) {
+        const pool = await database.get<InventoryPoolItem>('inventory_pool_items').find(poolItemId);
+        applyPoolToForm(pool);
+      }
+    };
+    load().catch(() => {});
+  }, [poolItemId, packItemId]);
+
+  function applyPoolToForm(pool: InventoryPoolItem) {
+    setName(pool.name);
+    setPoolCategory((pool.poolCategory as PoolCategory) ?? 'tools');
+    setUnit(pool.unit);
+    setExpiryDate(pool.expiryDate ? new Date(pool.expiryDate).toISOString().slice(0, 10) : '');
+    setWeightGrams(String(pool.weightGrams));
+    setCalories(pool.calories != null ? String(pool.calories) : '');
+    setWaterLitersPerUnit(
+      pool.waterLitersPerUnit != null ? String(pool.waterLitersPerUnit) : ''
+    );
+    setCondition(pool.condition ? pool.condition.charAt(0).toUpperCase() + pool.condition.slice(1) : null);
+    setIsEssential(pool.isEssential);
+    setNotes(pool.notes ?? '');
+    setLatitude(pool.latitude ?? null);
+    setLongitude(pool.longitude ?? null);
+    setBarcode(pool.barcode ?? null);
+    setIsWaypoint(pool.isWaypoint);
+  }
 
   const hasLocation = latitude != null && longitude != null;
+  const showQuantity = kitId != null && !isPoolOnlyEdit;
 
   const handleTemplateSelect = (r: TemplatePickResult) => {
     setName(r.name);
-    setCategory(r.category);
+    setPoolCategory(mapLegacyCategoryToPoolCategory(r.category));
     setWeightGrams(String(r.weightGrams));
   };
 
   const handleBarcodeScan = async (result: BarcodeScanResult) => {
-    const items = database.get<InventoryItem>('inventory_items');
-    const kitItems = await items.query(Q.where('kit_id', kitId)).fetch();
-    const existingInKit = kitItems.find((i) => i.barcode === result.barcode);
-    if (existingInKit) {
+    const poolCollection = database.get<InventoryPoolItem>('inventory_pool_items');
+    let currentPoolId = poolItemId ?? null;
+    if (!currentPoolId && packItemId) {
+      const pack = await database.get<KitPackItem>('kit_pack_items').find(packItemId);
+      currentPoolId = pack.poolItemId;
+    }
+    const currentPool = currentPoolId
+      ? await poolCollection.find(currentPoolId).catch(() => null)
+      : null;
+
+    if (kitId) {
+      const packs = await database.get<KitPackItem>('kit_pack_items').query(Q.where('kit_id', kitId)).fetch();
+      for (const p of packs) {
+        if (packItemId && p.id === packItemId) continue;
+        const pool = await p.poolItem.fetch();
+        if (pool.barcode === result.barcode) {
+          setBarcodeScannerVisible(false);
+          Alert.alert(
+            'Duplicate Barcode',
+            `"${pool.name}" already uses this barcode in this kit.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'View line',
+                onPress: () => {
+                  (navigation.getParent() as { navigate: (s: string, p: object) => void })?.navigate('KitDetail', {
+                    kitId,
+                    highlightedPackItemId: p.id,
+                  });
+                  navigation.goBack();
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
+    }
+
+    const dupGlobal = await poolCollection
+      .query(Q.where('barcode', result.barcode))
+      .fetch();
+    const other = dupGlobal.find((row) => row.id !== currentPool?.id);
+    if (other) {
       setBarcodeScannerVisible(false);
       Alert.alert(
-        'Duplicate Barcode',
-        `"${existingInKit.name}" already has this barcode in this kit. Avoid duplicates.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'View Item',
-            onPress: () => {
-              (navigation.getParent() as { navigate: (s: string, p: object) => void })?.navigate('KitDetail', {
-                kitId,
-                highlightedItemId: existingInKit.id,
-              });
-              navigation.goBack();
-            },
-          },
-        ]
+        'Barcode in pool',
+        `Another pool item "${other.name}" uses this barcode.`,
+        [{ text: 'OK' }]
       );
       return;
     }
+
     const templates = database.get<ItemTemplate>('item_templates');
     const match = await templates.query().fetch();
     const found = match.find((t) => t.barcode === result.barcode);
     if (found) {
       setName(found.name);
-      setCategory(found.category);
+      setPoolCategory(mapLegacyCategoryToPoolCategory(found.category));
       setWeightGrams(String(found.weightGrams));
       setScannedBarcode(found.barcode ?? null);
       setBarcode(found.barcode ?? null);
@@ -110,7 +184,7 @@ export function ItemFormScreen() {
         [{ text: 'OK' }]
       );
       setName('');
-      setCategory('Gear');
+      setPoolCategory('tools');
       setWeightGrams('');
     }
   };
@@ -128,10 +202,18 @@ export function ItemFormScreen() {
       const lon = loc.coords.longitude;
       setLatitude(lat);
       setLongitude(lon);
-      if (itemId) {
+      let pid = poolItemId ?? null;
+      if (!pid && packItemId) {
+        const pack = await database.get<KitPackItem>('kit_pack_items').find(packItemId);
+        pid = pack.poolItemId;
+      }
+      const poolIdToSave = pid;
+      if (poolIdToSave != null) {
         await database.write(async () => {
-          const item = await database.get<InventoryItem>('inventory_items').find(itemId);
-          await item.update((r) => {
+          const pool = await database
+            .get<InventoryPoolItem>('inventory_pool_items')
+            .find(poolIdToSave);
+          await pool.update((r) => {
             r.latitude = lat;
             r.longitude = lon;
             r.updatedAt = new Date();
@@ -148,71 +230,128 @@ export function ItemFormScreen() {
     }
   };
 
-  const handleViewOnMap = () => {
-    if (!itemId || !hasLocation) return;
+  const handleViewOnMap = async () => {
+    let id = poolItemId ?? null;
+    if (!id && packItemId) {
+      const pack = await database.get<KitPackItem>('kit_pack_items').find(packItemId);
+      id = pack.poolItemId;
+    }
+    if (!id || !hasLocation) return;
     (navigation.getParent() as { navigate: (s: string, p?: object) => void })?.navigate('Map', {
-      focusItemId: itemId,
+      focusItemId: id,
     });
   };
 
   const handleSave = async () => {
+    if (!isNewInKit && !isNewPoolOnly && !isPoolOnlyEdit && !packItemId) {
+      Alert.alert('Error', 'Invalid item form state');
+      return;
+    }
     const q = parseFloat(quantity) || 1;
     const w = parseFloat(weightGrams) || 0;
     const cal = calories.trim() ? parseFloat(calories) : null;
-    if (!name.trim()) { Alert.alert('Error', 'Name is required'); return; }
+    const waterPer = waterLitersPerUnit.trim() ? parseFloat(waterLitersPerUnit) : null;
+    if (!name.trim()) {
+      Alert.alert('Error', 'Name is required');
+      return;
+    }
     const expiry = expiryDate.trim() ? new Date(expiryDate).getTime() : null;
 
     await database.write(async () => {
-      const items = database.get<InventoryItem>('inventory_items');
-      if (itemId) {
-        const item = await items.find(itemId);
-        await item.update((r) => {
+      const pools = database.get<InventoryPoolItem>('inventory_pool_items');
+      const packs = database.get<KitPackItem>('kit_pack_items');
+
+      const writePool = async (pool: InventoryPoolItem) => {
+        await pool.update((r) => {
           r.name = name.trim();
-          r.category = category;
-          r.quantity = q;
+          r.poolCategory = poolCategory;
           r.unit = unit.trim() || 'pcs';
           r.expiryDate = expiry;
           r.weightGrams = w;
           r.calories = cal;
+          r.waterLitersPerUnit = waterPer;
           r.condition = condition?.toLowerCase() || null;
           r.isEssential = isEssential;
           r.notes = notes.trim() || null;
           r.latitude = latitude;
           r.longitude = longitude;
           r.barcode = barcode || scannedBarcode || null;
+          r.isWaypoint = isWaypoint;
           r.updatedAt = new Date();
         });
-      } else {
-        await items.create((r) => {
-          r.kitId = kitId;
-          r.name = name.trim();
-          r.category = category;
+      };
+
+      if (packItemId && kitId) {
+        const pack = await packs.find(packItemId);
+        const pool = await pack.poolItem.fetch();
+        await writePool(pool);
+        await pack.update((r) => {
           r.quantity = q;
+          r.updatedAt = new Date();
+        });
+      } else if (isPoolOnlyEdit && poolItemId) {
+        const pool = await pools.find(poolItemId);
+        await writePool(pool);
+      } else if (isNewInKit && kitId) {
+        const newPool = await pools.create((r) => {
+          r.name = name.trim();
+          r.poolCategory = poolCategory;
           r.unit = unit.trim() || 'pcs';
           r.expiryDate = expiry;
           r.weightGrams = w;
           r.calories = cal;
+          r.waterLitersPerUnit = waterPer;
           r.condition = condition?.toLowerCase() || null;
           r.isEssential = isEssential;
           r.notes = notes.trim() || null;
           r.latitude = latitude;
           r.longitude = longitude;
           r.barcode = barcode || scannedBarcode || null;
+          r.isWaypoint = isWaypoint;
+          r.createdAt = new Date();
+          r.updatedAt = new Date();
+        });
+        await packs.create((r) => {
+          r.kitId = kitId;
+          r.poolItemId = newPool.id;
+          r.quantity = q;
+          r.createdAt = new Date();
+          r.updatedAt = new Date();
+        });
+      } else if (isNewPoolOnly) {
+        await pools.create((r) => {
+          r.name = name.trim();
+          r.poolCategory = poolCategory;
+          r.unit = unit.trim() || 'pcs';
+          r.expiryDate = expiry;
+          r.weightGrams = w;
+          r.calories = cal;
+          r.waterLitersPerUnit = waterPer;
+          r.condition = condition?.toLowerCase() || null;
+          r.isEssential = isEssential;
+          r.notes = notes.trim() || null;
+          r.latitude = latitude;
+          r.longitude = longitude;
+          r.barcode = barcode || scannedBarcode || null;
+          r.isWaypoint = isWaypoint;
           r.createdAt = new Date();
           r.updatedAt = new Date();
         });
       }
+
       if (scannedBarcode) {
         const templates = database.get<ItemTemplate>('item_templates');
         await templates.create((r) => {
           r.name = name.trim();
-          r.category = category;
+          r.category = poolCategory;
           r.weightGrams = w;
           r.barcode = scannedBarcode;
         });
         setScannedBarcode(null);
       }
     });
+
+    refreshInventoryNotifications().catch(() => {});
     navigation.goBack();
   };
 
@@ -231,16 +370,10 @@ export function ItemFormScreen() {
           placeholder="Item name or select template"
           placeholderTextColor="#666"
         />
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={() => setPickerVisible(true)}
-        >
+        <TouchableOpacity style={styles.iconBtn} onPress={() => setPickerVisible(true)}>
           <Ionicons name="search" size={20} color={tactical.amber} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={() => setBarcodeScannerVisible(true)}
-        >
+        <TouchableOpacity style={styles.iconBtn} onPress={() => setBarcodeScannerVisible(true)}>
           <Ionicons name="barcode-outline" size={24} color={tactical.amber} />
         </TouchableOpacity>
       </View>
@@ -254,43 +387,72 @@ export function ItemFormScreen() {
         onClose={() => setBarcodeScannerVisible(false)}
         onScan={handleBarcodeScan}
       />
-      <Text style={tacticalStyles.label}>Category</Text>
-      <View style={tacticalStyles.row}>
-        {CATEGORIES.map((c) => (
+      <Text style={tacticalStyles.label}>Pool category</Text>
+      <View style={[tacticalStyles.row, { flexWrap: 'wrap' }]}>
+        {POOL_CATEGORY_KEYS.map((key) => (
           <TouchableOpacity
-            key={c}
-            style={[tacticalStyles.categoryChip, category === c ? tacticalStyles.categoryChipActive : tacticalStyles.categoryChipInactive]}
-            onPress={() => setCategory(c)}
+            key={key}
+            style={[
+              tacticalStyles.categoryChip,
+              poolCategory === key ? tacticalStyles.categoryChipActive : tacticalStyles.categoryChipInactive,
+            ]}
+            onPress={() => setPoolCategory(key)}
           >
-            <Text style={category === c ? tacticalStyles.categoryChipTextActive : tacticalStyles.categoryChipTextInactive}>{c}</Text>
+            <Text
+              style={
+                poolCategory === key
+                  ? tacticalStyles.categoryChipTextActive
+                  : tacticalStyles.categoryChipTextInactive
+              }
+            >
+              {POOL_CATEGORY_LABELS[key]}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
-      <View style={[tacticalStyles.row, { flexWrap: 'nowrap' }]}>
-        <View style={tacticalStyles.rowItem}>
-          <Text style={tacticalStyles.label}>Qty</Text>
-          <TextInput style={tacticalStyles.input} value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" />
+      {showQuantity ? (
+        <View style={[tacticalStyles.row, { flexWrap: 'nowrap' }]}>
+          <View style={tacticalStyles.rowItem}>
+            <Text style={tacticalStyles.label}>Qty in kit</Text>
+            <TextInput
+              style={tacticalStyles.input}
+              value={quantity}
+              onChangeText={setQuantity}
+              keyboardType="decimal-pad"
+            />
+          </View>
+          <View style={tacticalStyles.rowItem}>
+            <Text style={tacticalStyles.label}>Unit</Text>
+            <TextInput
+              style={tacticalStyles.input}
+              value={unit}
+              onChangeText={setUnit}
+              placeholder="pcs"
+              placeholderTextColor="#666"
+            />
+          </View>
         </View>
+      ) : (
         <View style={tacticalStyles.rowItem}>
           <Text style={tacticalStyles.label}>Unit</Text>
-          <TextInput style={tacticalStyles.input} value={unit} onChangeText={setUnit} placeholder="pcs" placeholderTextColor="#666" />
+          <TextInput
+            style={tacticalStyles.input}
+            value={unit}
+            onChangeText={setUnit}
+            placeholder="pcs"
+            placeholderTextColor="#666"
+          />
         </View>
-      </View>
+      )}
       <Text style={tacticalStyles.label}>Expiry</Text>
       <View style={styles.expiryRow}>
-        <TouchableOpacity
-          style={[tacticalStyles.input, styles.expiryInput]}
-          onPress={() => setShowDatePicker(true)}
-        >
+        <TouchableOpacity style={[tacticalStyles.input, styles.expiryInput]} onPress={() => setShowDatePicker(true)}>
           <Text style={expiryDate ? styles.expiryText : styles.expiryPlaceholder}>
             {expiryDate || 'Tap to select date'}
           </Text>
         </TouchableOpacity>
         {expiryDate ? (
-          <TouchableOpacity
-            style={styles.clearExpiryBtn}
-            onPress={() => setExpiryDate('')}
-          >
+          <TouchableOpacity style={styles.clearExpiryBtn} onPress={() => setExpiryDate('')}>
             <Text style={styles.clearExpiryText}>Clear</Text>
           </TouchableOpacity>
         ) : null}
@@ -317,32 +479,59 @@ export function ItemFormScreen() {
         </View>
       )}
       <Text style={tacticalStyles.label}>Weight (g)</Text>
-      <TextInput style={tacticalStyles.input} value={weightGrams} onChangeText={setWeightGrams} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#666" />
+      <TextInput
+        style={tacticalStyles.input}
+        value={weightGrams}
+        onChangeText={setWeightGrams}
+        keyboardType="decimal-pad"
+        placeholder="0"
+        placeholderTextColor="#666"
+      />
       {(barcode || scannedBarcode) && (
         <View style={styles.barcodeRow}>
           <Text style={tacticalStyles.label}>Barcode</Text>
           <View style={styles.barcodeDisplayRow}>
             <Text style={styles.barcodeText}>{barcode || scannedBarcode}</Text>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setBarcodeScannerVisible(true)}
-            >
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setBarcodeScannerVisible(true)}>
               <Ionicons name="scan" size={20} color={tactical.amber} />
             </TouchableOpacity>
           </View>
         </View>
       )}
-      <Text style={tacticalStyles.label}>Calories</Text>
-      <TextInput style={tacticalStyles.input} value={calories} onChangeText={setCalories} keyboardType="decimal-pad" placeholder="Optional" placeholderTextColor="#666" />
+      <Text style={tacticalStyles.label}>Calories (per unit)</Text>
+      <TextInput
+        style={tacticalStyles.input}
+        value={calories}
+        onChangeText={setCalories}
+        keyboardType="decimal-pad"
+        placeholder="Optional"
+        placeholderTextColor="#666"
+      />
+      <Text style={tacticalStyles.label}>Water (L per unit)</Text>
+      <TextInput
+        style={tacticalStyles.input}
+        value={waterLitersPerUnit}
+        onChangeText={setWaterLitersPerUnit}
+        keyboardType="decimal-pad"
+        placeholder="e.g. 1 for a 1L bottle"
+        placeholderTextColor="#666"
+      />
       <Text style={tacticalStyles.label}>Condition</Text>
       <View style={tacticalStyles.row}>
         {CONDITIONS.map((c) => (
           <TouchableOpacity
             key={c}
-            style={[tacticalStyles.categoryChip, condition === c ? tacticalStyles.categoryChipActive : tacticalStyles.categoryChipInactive]}
+            style={[
+              tacticalStyles.categoryChip,
+              condition === c ? tacticalStyles.categoryChipActive : tacticalStyles.categoryChipInactive,
+            ]}
             onPress={() => setCondition(condition === c ? null : c)}
           >
-            <Text style={condition === c ? tacticalStyles.categoryChipTextActive : tacticalStyles.categoryChipTextInactive}>{c}</Text>
+            <Text
+              style={condition === c ? tacticalStyles.categoryChipTextActive : tacticalStyles.categoryChipTextInactive}
+            >
+              {c}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -355,10 +544,19 @@ export function ItemFormScreen() {
           thumbColor={isEssential ? tactical.black : tactical.zinc[400]}
         />
       </View>
+      <View style={styles.switchRow}>
+        <Text style={tacticalStyles.label}>Map waypoint (base / vehicle cache)</Text>
+        <Switch
+          value={isWaypoint}
+          onValueChange={setIsWaypoint}
+          trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
+          thumbColor={isWaypoint ? tactical.black : tactical.zinc[400]}
+        />
+      </View>
       <View style={styles.locationRow}>
         <TouchableOpacity
           style={[tacticalStyles.btnPrimary, styles.tagBtn]}
-          onPress={handleTagLocation}
+          onPress={() => void handleTagLocation()}
           disabled={taggingLocation}
         >
           {taggingLocation ? (
@@ -375,7 +573,9 @@ export function ItemFormScreen() {
             </Text>
             <TouchableOpacity
               style={[tacticalStyles.btnSecondary, styles.viewMapBtn]}
-              onPress={handleViewOnMap}
+              onPress={() => {
+                void handleViewOnMap();
+              }}
             >
               <Ionicons name="map-outline" size={20} color="#ffffff" />
               <Text style={[tacticalStyles.btnSecondaryText, { marginLeft: 8 }]}>View on Map</Text>
@@ -392,7 +592,7 @@ export function ItemFormScreen() {
         placeholderTextColor="#666"
         multiline
       />
-      <TouchableOpacity style={tacticalStyles.btnPrimary} onPress={handleSave}>
+      <TouchableOpacity style={tacticalStyles.btnPrimary} onPress={() => void handleSave()}>
         <Text style={tacticalStyles.btnPrimaryText}>Save</Text>
       </TouchableOpacity>
     </ScrollView>
@@ -446,5 +646,10 @@ const styles = StyleSheet.create({
   notesInput: { minHeight: 80, textAlignVertical: 'top' },
   barcodeRow: { marginBottom: 16 },
   barcodeDisplayRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  barcodeText: { color: tactical.zinc[400], fontSize: 14, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', flex: 1 },
+  barcodeText: {
+    color: tactical.zinc[400],
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    flex: 1,
+  },
 });

@@ -1,14 +1,27 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Platform, Animated, TextInput, Easing } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  StyleSheet,
+  Platform,
+  Animated,
+  TextInput,
+  Easing,
+} from 'react-native';
 import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
-import type InventoryItem from '../../../database/models/InventoryItem';
+import type KitPackItem from '../../../database/models/KitPackItem';
+import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
 import type Profile from '../../../database/models/Profile';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
+import { POOL_CATEGORY_LABELS, type PoolCategory } from '../../../shared/constants/poolCategories';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { useWeightWarning } from '../hooks/useWeightWarning';
 import { BlinkingAmberWarning } from '../components/BlinkingAmberWarning';
@@ -17,7 +30,6 @@ import { BarcodeScannerModal, type BarcodeScanResult } from '../components/Barco
 import * as SecureSettings from '../../../shared/services/secureSettings';
 
 const EXPIRY_WARN_DAYS = 30;
-/** Water density: 1 kg per liter. */
 const KG_PER_LITER = 1;
 
 type ExpiryStatus = 'ok' | 'expiring_soon' | 'expired';
@@ -41,14 +53,16 @@ function truncateBarcode(barcode: string, head = 3, tail = 3): string {
   return `${barcode.slice(0, head)}...${barcode.slice(-tail)}`;
 }
 
+export type PackLine = { pack: KitPackItem; pool: InventoryPoolItem };
+
 type Nav = NativeStackNavigationProp<SharedStackParamList, 'KitDetail'>;
 
 export function KitDetailScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'KitDetail'>>();
-  const { kitId, highlightedItemId } = route.params;
+  const { kitId, highlightedPackItemId } = route.params;
   const navigation = useNavigation<Nav>();
   const [kit, setKit] = useState<Kit | null>(null);
-  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [lines, setLines] = useState<PackLine[]>([]);
   const [bodyWeightKg, setBodyWeightKg] = useState<number | null>(null);
   const [weightPercent, setWeightPercent] = useState(20);
   const [sortByExpiry, setSortByExpiry] = useState(false);
@@ -57,7 +71,7 @@ export function KitDetailScreen() {
   const highlightOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!highlightedItemId) return;
+    if (!highlightedPackItemId) return;
     highlightOpacity.setValue(1);
     const anim = Animated.timing(highlightOpacity, {
       toValue: 0,
@@ -67,19 +81,25 @@ export function KitDetailScreen() {
     });
     anim.start();
     const t = setTimeout(() => {
-      navigation.setParams({ highlightedItemId: undefined });
+      navigation.setParams({ highlightedPackItemId: undefined });
     }, 5000);
     return () => {
       anim.stop();
       clearTimeout(t);
     };
-  }, [highlightedItemId, highlightOpacity, navigation]);
+  }, [highlightedPackItemId, highlightOpacity, navigation]);
 
   const load = useCallback(async () => {
     const k = await database.get<Kit>('kits').find(kitId);
-    const list = await database.get<InventoryItem>('inventory_items').query(Q.where('kit_id', kitId)).fetch();
+    const packs = await database.get<KitPackItem>('kit_pack_items').query(Q.where('kit_id', kitId)).fetch();
+    const hydrated: PackLine[] = await Promise.all(
+      packs.map(async (pack) => ({
+        pack,
+        pool: await pack.poolItem.fetch(),
+      }))
+    );
     setKit(k);
-    setItems(list);
+    setLines(hydrated);
   }, [kitId]);
 
   useEffect(() => {
@@ -92,7 +112,6 @@ export function KitDetailScreen() {
       ]);
       setWeightPercent(pct);
       setSortByExpiry(sort);
-      // Settings body weight takes precedence; fallback to first profile
       const first = profiles[0];
       setBodyWeightKg(settingsBodyWeight ?? first?.bodyWeightKg ?? null);
     })();
@@ -113,77 +132,80 @@ export function KitDetailScreen() {
     }, [load])
   );
 
-  // Update header title when kit loads (fixes Kit name not refreshing after edit)
   useEffect(() => {
     if (kit?.name) {
       navigation.setOptions({ title: kit.name });
     }
   }, [kit?.name, navigation]);
 
-  const sortedItems = sortByExpiry
-    ? [...items].sort((a, b) => {
-        if (!a.expiryDate) return 1;
-        if (!b.expiryDate) return -1;
-        return a.expiryDate - b.expiryDate;
+  const sortedLines = sortByExpiry
+    ? [...lines].sort((a, b) => {
+        if (!a.pool.expiryDate) return 1;
+        if (!b.pool.expiryDate) return -1;
+        return a.pool.expiryDate - b.pool.expiryDate;
       })
-    : items;
+    : lines;
 
-  const filteredItems = searchQuery.trim()
-    ? sortedItems.filter(
-        (i) =>
-          i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (i.barcode != null && i.barcode.includes(searchQuery))
+  const filteredLines = searchQuery.trim()
+    ? sortedLines.filter(
+        ({ pool }) =>
+          pool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (pool.barcode != null && pool.barcode.includes(searchQuery))
       )
-    : sortedItems;
+    : sortedLines;
 
   const handleBarcodeScanSearch = (result: BarcodeScanResult) => {
     setSearchQuery(result.barcode);
     setBarcodeScannerVisible(false);
   };
 
-  const itemsWeightGrams = items.reduce((sum, i) => sum + i.quantity * i.weightGrams, 0);
+  const itemsWeightGrams = lines.reduce((sum, { pack, pool }) => sum + pack.quantity * pool.weightGrams, 0);
   const waterLiters = kit?.waterReservoirLiters ?? 0;
   const waterWeightKg = waterLiters * KG_PER_LITER;
   const totalWeightGrams = itemsWeightGrams + waterWeightKg * 1000;
   const totalKg = totalWeightGrams / 1000;
-  const totalCalories = items.reduce((sum, i) => sum + (i.calories ?? 0) * i.quantity, 0);
+  const totalCalories = lines.reduce(
+    (sum, { pack, pool }) => sum + (pool.calories ?? 0) * pack.quantity,
+    0
+  );
 
-  const limitKg = bodyWeightKg != null && bodyWeightKg > 0
-    ? bodyWeightKg * (weightPercent / 100)
-    : null;
+  const limitKg =
+    bodyWeightKg != null && bodyWeightKg > 0 ? bodyWeightKg * (weightPercent / 100) : null;
   const isOverLimit = limitKg != null && totalKg > limitKg;
-  const bodyWeightPct = bodyWeightKg != null && bodyWeightKg > 0
-    ? Math.round((totalKg / bodyWeightKg) * 100)
-    : null;
+  const bodyWeightPct =
+    bodyWeightKg != null && bodyWeightKg > 0 ? Math.round((totalKg / bodyWeightKg) * 100) : null;
 
   const { warningPercent } = useWeightWarning(totalWeightGrams, bodyWeightKg, weightPercent);
 
   const handleAddItem = () => navigation.navigate('ItemForm', { kitId });
-  const handleDeleteItem = (item: InventoryItem) => {
-    Alert.alert('Delete', `Remove "${item.name}"?`, [
+  const handleAddFromPool = () => navigation.navigate('PoolPicker', { kitId });
+
+  const handleDeleteLine = (line: PackLine) => {
+    Alert.alert('Remove from kit', `Remove "${line.pool.name}" from this kit? (Pool catalog entry is kept.)`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        await database.write(async () => await item.markAsDeleted());
-        await load();
-      }},
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          await database.write(async () => await line.pack.markAsDeleted());
+          await load();
+        },
+      },
     ]);
   };
 
   if (!kit) return <View style={tacticalStyles.screen} />;
 
-  const weightDisplay = isOverLimit
-    ? <BlinkingRedWarning text={`PKG_WT: ${totalKg.toFixed(2)} KG`} />
-    : (
-        <Text style={styles.telemetryLabel}>
-          PKG_WT: {totalKg.toFixed(2)} KG
-        </Text>
-      );
+  const weightDisplay = isOverLimit ? (
+    <BlinkingRedWarning text={`PKG_WT: ${totalKg.toFixed(2)} KG`} />
+  ) : (
+    <Text style={styles.telemetryLabel}>PKG_WT: {totalKg.toFixed(2)} KG</Text>
+  );
 
   const handleEditHydration = () => navigation.navigate('KitForm', { kitId });
 
   return (
     <View style={tacticalStyles.screen}>
-      {/* Load Bar - prominent at top */}
       <View style={[styles.loadBar, isOverLimit && styles.loadBarOver]}>
         <View style={styles.loadBarRow}>
           <Text style={styles.loadBarLabel}>LOAD</Text>
@@ -209,7 +231,6 @@ export function KitDetailScreen() {
         )}
       </View>
 
-      {/* Telemetry block: weight, hydration, calories */}
       <View style={[styles.telemetryBlock, isOverLimit && styles.weightWarn]}>
         {weightDisplay}
         <View style={styles.summaryRow}>
@@ -221,10 +242,8 @@ export function KitDetailScreen() {
             <Text style={styles.hydrationText}>{waterLiters}L</Text>
             <Ionicons name="pencil" size={12} color={tactical.zinc[500]} style={{ marginLeft: 4 }} />
           </TouchableOpacity>
-          <Text style={styles.summaryText}>{items.length} items</Text>
-          {totalCalories > 0 && (
-            <Text style={styles.caloriesText}>{Math.round(totalCalories)} kcal</Text>
-          )}
+          <Text style={styles.summaryText}>{lines.length} lines</Text>
+          {totalCalories > 0 && <Text style={styles.caloriesText}>{Math.round(totalCalories)} kcal</Text>}
         </View>
         {warningPercent != null && (
           <Text style={styles.warningText}>
@@ -232,6 +251,14 @@ export function KitDetailScreen() {
           </Text>
         )}
       </View>
+
+      <View style={styles.addFromPoolRow}>
+        <TouchableOpacity style={styles.addFromPoolBtn} onPress={handleAddFromPool} activeOpacity={0.8}>
+          <Ionicons name="albums-outline" size={18} color={tactical.black} />
+          <Text style={styles.addFromPoolBtnText}>Add from Pool</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
@@ -240,10 +267,7 @@ export function KitDetailScreen() {
           placeholder="Search items or scan barcode..."
           placeholderTextColor={tactical.zinc[500]}
         />
-        <TouchableOpacity
-          style={styles.searchScanBtn}
-          onPress={() => setBarcodeScannerVisible(true)}
-        >
+        <TouchableOpacity style={styles.searchScanBtn} onPress={() => setBarcodeScannerVisible(true)}>
           <Ionicons name="barcode-outline" size={22} color={tactical.amber} />
         </TouchableOpacity>
       </View>
@@ -253,85 +277,95 @@ export function KitDetailScreen() {
         onScan={handleBarcodeScanSearch}
       />
       <FlatList
-        data={filteredItems}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
-          const showExpiryWarn = isExpiredOrExpiringSoon(item.expiryDate);
-          const expiryStatus = getExpiryStatus(item.expiryDate);
-          const itemCal = item.calories != null ? item.quantity * item.calories : 0;
-          const isHighlighted = highlightedItemId === item.id;
+        data={filteredLines}
+        keyExtractor={(line) => line.pack.id}
+        renderItem={({ item: line }) => {
+          const { pack, pool } = line;
+          const showExpiryWarn = isExpiredOrExpiringSoon(pool.expiryDate);
+          const expiryStatus = getExpiryStatus(pool.expiryDate);
+          const itemCal = pool.calories != null ? pack.quantity * pool.calories : 0;
+          const isHighlighted = highlightedPackItemId === pack.id;
+          const catKey = pool.poolCategory as PoolCategory;
+          const catLabel = POOL_CATEGORY_LABELS[catKey] ?? pool.poolCategory;
           return (
             <View style={styles.itemCardWrap}>
               <TouchableOpacity
-                style={[
-                  styles.itemCard,
-                  item.isEssential && styles.essentialCard,
-                ]}
-                onPress={() => navigation.navigate('ItemForm', { kitId, itemId: item.id })}
-                onLongPress={() => handleDeleteItem(item)}
+                style={[styles.itemCard, pool.isEssential && styles.essentialCard]}
+                onPress={() => navigation.navigate('ItemForm', { kitId, packItemId: pack.id })}
+                onLongPress={() => handleDeleteLine(line)}
               >
-              <View style={styles.itemNameRow}>
-                {item.isEssential && (
-                  <Ionicons name="star" size={18} color={tactical.amber} style={styles.essentialIcon} />
-                )}
-                <Text style={[styles.itemName, item.isEssential && styles.essentialText]}>{item.name}</Text>
-                {item.latitude != null && item.longitude != null && (
-                  <Ionicons name="location" size={16} color={tactical.amber} style={styles.locationIcon} />
-                )}
-                {showExpiryWarn && <BlinkingAmberWarning />}
-              </View>
-              <View style={styles.itemMetaRow}>
-                <Text style={styles.itemMeta}>
-                  {item.quantity} {item.unit} · {(item.weightGrams / 1000).toFixed(2)} kg
-                  {itemCal > 0 && ` · ${Math.round(itemCal)} kcal`}
-                </Text>
-              </View>
-              <View style={styles.itemTagsRow}>
-                {item.barcode && (
-                  <View style={styles.barcodeTag}>
-                    <Ionicons name="barcode-outline" size={12} color={tactical.amber} />
-                    <Text style={styles.barcodeTagText} numberOfLines={1}>
-                      {truncateBarcode(item.barcode)}
-                    </Text>
-                  </View>
-                )}
-                {item.condition && (
-                  <View style={styles.tag}>
-                    <Text style={styles.tagText}>{item.condition.charAt(0).toUpperCase() + item.condition.slice(1)}</Text>
-                  </View>
-                )}
-                {expiryStatus && (
-                  <View style={[styles.tag, expiryStatus === 'ok' && styles.tagOk, expiryStatus === 'expiring_soon' && styles.tagExpiringSoon, expiryStatus === 'expired' && styles.tagExpired]}>
-                    <Text style={styles.tagText}>
-                      {expiryStatus === 'expired' && 'EXPIRED'}
-                      {expiryStatus === 'expiring_soon' && 'EXPIRING SOON'}
-                      {expiryStatus === 'ok' && 'OK'}
-                    </Text>
-                  </View>
-                )}
-                {item.expiryDate && (
-                  <Text style={styles.expiryDateText}>
-                    Exp: {new Date(item.expiryDate).toISOString().slice(0, 10)}
+                <View style={styles.itemNameRow}>
+                  {pool.isEssential && (
+                    <Ionicons name="star" size={18} color={tactical.amber} style={styles.essentialIcon} />
+                  )}
+                  <Text style={[styles.itemName, pool.isEssential && styles.essentialText]}>{pool.name}</Text>
+                  {pool.latitude != null && pool.longitude != null && (
+                    <Ionicons name="location" size={16} color={tactical.amber} style={styles.locationIcon} />
+                  )}
+                  {showExpiryWarn && <BlinkingAmberWarning />}
+                </View>
+                <Text style={styles.poolCategoryTag}>{catLabel}</Text>
+                <View style={styles.itemMetaRow}>
+                  <Text style={styles.itemMeta}>
+                    {pack.quantity} {pool.unit} · {(pool.weightGrams / 1000).toFixed(2)} kg / unit
+                    {itemCal > 0 && ` · ${Math.round(itemCal)} kcal`}
                   </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-            {isHighlighted && (
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFill,
-                  styles.itemCardHighlightOverlay,
-                  { opacity: highlightOpacity },
-                ]}
-              />
-            )}
+                </View>
+                <View style={styles.itemTagsRow}>
+                  {pool.barcode && (
+                    <View style={styles.barcodeTag}>
+                      <Ionicons name="barcode-outline" size={12} color={tactical.amber} />
+                      <Text style={styles.barcodeTagText} numberOfLines={1}>
+                        {truncateBarcode(pool.barcode)}
+                      </Text>
+                    </View>
+                  )}
+                  {pool.condition && (
+                    <View style={styles.tag}>
+                      <Text style={styles.tagText}>
+                        {pool.condition.charAt(0).toUpperCase() + pool.condition.slice(1)}
+                      </Text>
+                    </View>
+                  )}
+                  {expiryStatus && (
+                    <View
+                      style={[
+                        styles.tag,
+                        expiryStatus === 'ok' && styles.tagOk,
+                        expiryStatus === 'expiring_soon' && styles.tagExpiringSoon,
+                        expiryStatus === 'expired' && styles.tagExpired,
+                      ]}
+                    >
+                      <Text style={styles.tagText}>
+                        {expiryStatus === 'expired' && 'EXPIRED'}
+                        {expiryStatus === 'expiring_soon' && 'EXPIRING SOON'}
+                        {expiryStatus === 'ok' && 'OK'}
+                      </Text>
+                    </View>
+                  )}
+                  {pool.expiryDate && (
+                    <Text style={styles.expiryDateText}>
+                      Exp: {new Date(pool.expiryDate).toISOString().slice(0, 10)}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+              {isHighlighted && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFill,
+                    styles.itemCardHighlightOverlay,
+                    { opacity: highlightOpacity },
+                  ]}
+                />
+              )}
             </View>
           );
         }}
         ListEmptyComponent={
           <Text style={tacticalStyles.emptyText}>
-            {searchQuery.trim() ? 'No items match search.' : 'No items. Tap + to add.'}
+            {searchQuery.trim() ? 'No items match search.' : 'No items. Tap + or Add from Pool.'}
           </Text>
         }
       />
@@ -343,6 +377,25 @@ export function KitDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  addFromPoolRow: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  addFromPoolBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: tactical.amber,
+  },
+  addFromPoolBtnText: {
+    color: tactical.black,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   loadBar: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -501,6 +554,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: tactical.amber,
+  },
+  poolCategoryTag: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '600',
   },
   itemName: {
     color: '#ffffff',

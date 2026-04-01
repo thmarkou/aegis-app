@@ -264,6 +264,8 @@ export function DashboardScreen() {
     altitudeM,
     distWalkedKm,
     weather,
+    maintenanceExpiringSoon,
+    maintenanceStalePower,
     refresh,
   } = useDashboardData();
 
@@ -315,6 +317,15 @@ export function DashboardScreen() {
   const isCompromised = !isReady;
   const statusText = isReady ? 'MISSION READY' : 'MISSION COMPROMISED';
   const statusColor = isReady ? '#22c55e' : '#ef4444';
+
+  const maintenanceNeedsAttention =
+    maintenanceExpiringSoon > 0 || maintenanceStalePower > 0;
+
+  const handleOpenLogistics = () => {
+    (navigation as { navigate: (name: string, params?: object) => void }).navigate('Mission', {
+      screen: 'Logistics',
+    });
+  };
 
   const handleSosPressIn = () => {
     sosTimerRef.current = setInterval(() => {
@@ -388,6 +399,33 @@ export function DashboardScreen() {
         <ReadinessGauge score={readinessScore} isCompromised={isCompromised} />
         <StatusBadge isCompromised={isCompromised} statusText={statusText} statusColor={statusColor} />
       </View>
+
+      <Pressable
+        style={[styles.maintenanceCard, maintenanceNeedsAttention && styles.maintenanceCardAlert]}
+        onPress={handleOpenLogistics}
+      >
+        <Text style={styles.maintenanceTitle}>MAINTENANCE</Text>
+        <Text
+          style={[
+            styles.maintenanceBody,
+            maintenanceNeedsAttention && styles.maintenanceBodyAlert,
+          ]}
+        >
+          {maintenanceExpiringSoon === 0 && maintenanceStalePower === 0
+            ? 'No inventory or power alerts.'
+            : [
+                maintenanceExpiringSoon > 0
+                  ? `${maintenanceExpiringSoon} item(s) expiring soon`
+                  : null,
+                maintenanceStalePower > 0
+                  ? `${maintenanceStalePower} power device(s) STALE`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+        </Text>
+        <Text style={styles.maintenanceHint}>Tap · Logistics & Power</Text>
+      </Pressable>
 
       <View style={styles.telemetryGrid}>
         <TelemetryCard
@@ -565,6 +603,40 @@ const styles = StyleSheet.create({
   gaugeSection: {
     alignItems: 'center',
     marginBottom: 24,
+  },
+  maintenanceCard: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+    backgroundColor: tactical.zinc[900],
+  },
+  maintenanceCardAlert: {
+    borderColor: 'rgba(249, 115, 22, 0.55)',
+    backgroundColor: 'rgba(127, 29, 29, 0.25)',
+  },
+  maintenanceTitle: {
+    color: tactical.amber,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2,
+    marginBottom: 6,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  maintenanceBody: {
+    color: tactical.zinc[400],
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  maintenanceBodyAlert: {
+    color: '#fdba74',
+    fontWeight: '600',
+  },
+  maintenanceHint: {
+    color: tactical.zinc[500],
+    fontSize: 11,
+    marginTop: 8,
   },
   gaugeWrap: {
     position: 'relative',

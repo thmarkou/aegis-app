@@ -3,10 +3,12 @@
  * Runs on app init and can be triggered after item save.
  */
 
+import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
-import type InventoryItem from '../../../database/models/InventoryItem';
+import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
 import { getExpiryDays } from '../../../shared/services/secureSettings';
 
 Notifications.setNotificationHandler({
@@ -38,7 +40,7 @@ export async function scheduleExpiryNotifications(): Promise<void> {
   const cutoff = now + days * 24 * 60 * 60 * 1000;
 
   const items = await database
-    .get<InventoryItem>('inventory_items')
+    .get<InventoryPoolItem>('inventory_pool_items')
     .query(
       Q.and(
         Q.where('expiry_date', Q.gte(now)),
@@ -53,16 +55,19 @@ export async function scheduleExpiryNotifications(): Promise<void> {
     const triggerDate = new Date(expiry);
     triggerDate.setHours(8, 0, 0, 0);
     if (triggerDate.getTime() <= Date.now()) continue;
-    const secondsFromNow = (triggerDate.getTime() - Date.now()) / 1000;
 
     await Notifications.scheduleNotificationAsync({
+      identifier: `expiry-${item.id}`,
       content: {
         title: 'AEGIS: Item expiring',
         body: `${item.name} expires on ${new Date(expiry).toISOString().slice(0, 10)}`,
-        data: { itemId: item.id, kitId: item.kitId },
+        data: { poolItemId: item.id },
+        ...(Platform.OS === 'android' ? { channelId: 'expiry' } : {}),
       },
-      trigger: { seconds: secondsFromNow, channelId: 'expiry' },
-      identifier: `expiry-${item.id}`,
+      trigger: {
+        type: SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+      },
     });
   }
 }
