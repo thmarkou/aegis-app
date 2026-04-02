@@ -8,6 +8,7 @@ import {
   Alert,
   StyleSheet,
   Switch,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,11 +19,13 @@ import type { SharedStackParamList } from '../../../shared/navigation/sharedStac
 import type { KitIconType } from '../../../shared/types';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
+import { parseLocaleDecimalInput } from '../../../shared/utils/localeDecimal';
 
 const KIT_ICONS: { type: KitIconType; label: string; ionicon: keyof typeof Ionicons.glyphMap }[] = [
   { type: 'backpack', label: 'Backpack', ionicon: 'bag-outline' },
   { type: 'car', label: 'Car', ionicon: 'car-outline' },
   { type: 'home', label: 'Home', ionicon: 'home-outline' },
+  { type: 'edc_belt', label: 'EDC / Belt', ionicon: 'file-tray-stacked-outline' },
 ];
 
 export function KitFormScreen() {
@@ -59,7 +62,7 @@ export function KitFormScreen() {
       Alert.alert('Error', 'Name is required');
       return;
     }
-    const waterL = waterReservoirLiters.trim() ? parseFloat(waterReservoirLiters) : null;
+    const waterL = waterReservoirLiters.trim() ? parseLocaleDecimalInput(waterReservoirLiters) : null;
     if (waterL != null && (isNaN(waterL) || waterL < 0 || waterL > 20)) {
       Alert.alert('Error', 'Water reservoir must be 0–20 L');
       return;
@@ -120,10 +123,16 @@ export function KitFormScreen() {
         style={tacticalStyles.input}
         value={waterReservoirLiters}
         onChangeText={setWaterReservoirLiters}
-        placeholder="Optional, e.g. 2"
+        placeholder="e.g. 2 or 0,5"
         placeholderTextColor="#666"
-        keyboardType="decimal-pad"
+        keyboardType={Platform.OS === 'android' ? 'numeric' : 'decimal-pad'}
+        {...(Platform.OS === 'android' ? ({ inputMode: 'decimal' } as const) : {})}
+        autoCorrect={false}
+        autoCapitalize="none"
       />
+      <Text style={styles.fieldHint}>
+        Δεκαδικά: δουλεύουν και κόμμα και τελεία (π.χ. 0,5 ή 0.5 L).
+      </Text>
       <Text style={tacticalStyles.label}>Kit Icon</Text>
       <View style={[tacticalStyles.row, { flexDirection: 'row', flexWrap: 'wrap' }]}>
         {KIT_ICONS.map(({ type, label, ionicon }) => (
@@ -188,5 +197,12 @@ const styles = StyleSheet.create({
     color: tactical.zinc[500],
     fontSize: 14,
     fontWeight: '600',
+  },
+  fieldHint: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: -8,
+    marginBottom: 12,
   },
 });

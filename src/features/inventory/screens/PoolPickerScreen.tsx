@@ -19,6 +19,7 @@ import {
 } from '../../../shared/constants/poolCategories';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
+import { formatWeightGrams } from '../../../shared/utils/formatWeight';
 
 export function PoolPickerScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'PoolPicker'>>();
@@ -99,7 +100,7 @@ export function PoolPickerScreen() {
               <Text style={styles.catBadge}>{categoryLabel(item)}</Text>
               <Text style={styles.rowName}>{item.name}</Text>
               <Text style={styles.rowMeta}>
-                {(item.weightGrams / 1000).toFixed(2)} kg / unit
+                {formatWeightGrams(item.weightGrams)} g / unit
                 {item.calories != null ? ` · ${item.calories} kcal/unit` : ''}
               </Text>
             </View>
@@ -108,8 +109,7 @@ export function PoolPickerScreen() {
         )}
         ListEmptyComponent={
           <Text style={tacticalStyles.emptyText}>
-            No items in your warehouse yet. Add them from Mission → Warehouse catalog (or Inventory tab) with + or Add
-            from Templates.
+            No items in your warehouse yet. Add them from Mission → Warehouse catalog (or Inventory tab) with +.
           </Text>
         }
         contentContainerStyle={styles.listContent}

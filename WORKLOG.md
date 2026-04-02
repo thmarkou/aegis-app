@@ -425,6 +425,34 @@
 
 ---
 
+## 2026-04-02 (Πέμπτη) – APRS κρυπτογράφηση, καθαρισμός pool/templates, Mission Prep UX
+
+### APRS message encryption (dual-layer)
+- **`crypto-js`** (AES-256-CBC): κλειδί από SHA256(UTF-8 passphrase)· wire `ENC:` + base64url(IV‖ciphertext) με **~72 χαρακτήρες** budget για single APRS status.
+- **`src/services/aprsEncryption.ts`**: `encryptAprsPayload`, `decryptAprsPayloadWithKey`, `decodeIncomingAprsMessageBody` (Family → Rescuers → mismatch label).
+- **`secureSettings.ts`**: `get/setFamilyEncryptionKey`, `get/setRescuersEncryptionKey` (expo-secure-store).
+- **Settings**: ενότητα APRS message encryption – δύο πεδία (onBlur persist).
+- **CommsScreenContent**: τρεις λειτουργίες (Plain / Family / Rescuers) + αποστολή status μέσω **`sendAprsStatusMessage`** όταν επιλέγεται κρυπτογράφηση.
+- **`BeaconService`**: κρυπτογράφηση payload πριν το status packet όταν χρειάζεται.
+- **`DecodedPacketRouter`**: εισερχόμενα με `ENC:` αποκωδικοποιούνται για log/UI (`Family: …` / `Rescuers: …` / `[Encrypted Message - Key Mismatch]`).
+
+### Database (schema v18 → v19)
+- **v18**: one-time wipe (`kit_pack_items`, `inventory_pool_items`, `power_devices`, `item_templates`, `kits`)· μετά το init **`ensurePatrolPackKit()`** – ένα κενό kit **35L Patrol Pack**.
+- **v19**: `DROP TABLE item_templates`· αφαίρεση μοντέλου **`ItemTemplate`** και seed **`seedItemTemplates`**.
+
+### Inventory / UI
+- Αφαίρεση ροής **templates**: `AddFromTemplatesModal`, `TemplatePicker`, `TemplateListScreen`, `TemplateFormScreen`· απλοποίηση **`InventoryPoolScreen`** (chips wrap, κρυμμένες κενές ενότητες)· **`InventoryStack`**: routes templates αφαιρέθηκαν.
+- **`inventoryPoolDelete.ts`**, **`formatWeight.ts`**, **`localeDecimal.ts`** για συνέπεια UI/διαγραφών.
+- Ενημερώσεις **`ItemFormScreen`**, **`KitFormScreen`**, **`KitDetailScreen`**, **`PoolPickerScreen`**, **`PowerDeviceFormScreen`**, **`powerDevicePoolSync`**.
+
+### Mission Prep
+- **`MissionStack`**: αφαίρεση διπλού **Edit Presets** από το header· παραμένει μόνο δίπλα στο **Plan Mission** (`MissionPrepScreen`).
+
+### Git
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-02).
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

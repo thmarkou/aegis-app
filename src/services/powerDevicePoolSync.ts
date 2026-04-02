@@ -1,5 +1,6 @@
 /**
- * Keeps logistics power_devices in sync with warehouse inventory_pool_items (Power category).
+ * Logistics power_devices. Optional `pool_item_id` links a device to a manually created warehouse row.
+ * New devices do not auto-create pool items — pool entries are added only via Inventory Pool / Item form.
  */
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../database';
@@ -7,7 +8,7 @@ import type PowerDevice from '../database/models/PowerDevice';
 import type InventoryPoolItem from '../database/models/InventoryPoolItem';
 import type KitPackItem from '../database/models/KitPackItem';
 
-export async function createPowerDeviceWithPool(input: {
+export async function createPowerDevice(input: {
   name: string;
   batteryType: string | null;
   maintenanceCycleDays: number;
@@ -15,32 +16,14 @@ export async function createPowerDeviceWithPool(input: {
   const name = input.name.trim();
   let deviceId = '';
   await database.write(async () => {
-    const poolRow = await database.get<InventoryPoolItem>('inventory_pool_items').create((r) => {
-      r.name = name;
-      r.poolCategory = 'power';
-      r.unit = 'ea';
-      r.weightGrams = 0;
-      r.expiryDate = null;
-      r.calories = null;
-      r.waterLitersPerUnit = null;
-      r.isEssential = false;
-      r.condition = null;
-      r.notes = null;
-      r.barcode = null;
-      r.latitude = null;
-      r.longitude = null;
-      r.isWaypoint = false;
-      r.createdAt = new Date();
-      r.updatedAt = new Date();
-    });
-    const slug = `pd_${poolRow.id.slice(0, 8)}_${Date.now()}`;
+    const slug = `pd_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
     const dev = await database.get<PowerDevice>('power_devices').create((r) => {
       r.slug = slug;
       r.name = name;
       r.batteryType = input.batteryType?.trim() || null;
       r.maintenanceCycleDays = input.maintenanceCycleDays;
       r.lastFullChargeAt = null;
-      r.poolItemId = poolRow.id;
+      r.poolItemId = null;
       r.createdAt = new Date();
       r.updatedAt = new Date();
     });

@@ -13,10 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { database } from '../../../database';
 import type PowerDevice from '../../../database/models/PowerDevice';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
-import {
-  createPowerDeviceWithPool,
-  updatePowerDeviceAndPool,
-} from '../../../services/powerDevicePoolSync';
+import { createPowerDevice, updatePowerDeviceAndPool } from '../../../services/powerDevicePoolSync';
 
 const BATTERY_PRESETS = ['Li-ion', 'LiFePO4', 'NiMH', 'AA / AAA', '18650 pack', 'Other'] as const;
 
@@ -63,7 +60,7 @@ export function PowerDeviceFormScreen() {
     }
     try {
       if (isCreate) {
-        await createPowerDeviceWithPool({
+        await createPowerDevice({
           name: name.trim(),
           batteryType: batteryType.trim() || null,
           maintenanceCycleDays: days,

@@ -400,6 +400,7 @@ export function MissionPrepScreen() {
           thumbColor={testMode ? tactical.black : tactical.zinc[400]}
         />
       </View>
+
     </ScrollView>
   );
 }

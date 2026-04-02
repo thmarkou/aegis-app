@@ -7,6 +7,7 @@ import { database } from '../database';
 import type MessageLog from '../database/models/MessageLog';
 import type IncomingStation from '../database/models/IncomingStation';
 import { parseAprsPacket } from './AprsPacketParser';
+import { decodeIncomingAprsMessageBody } from './aprsEncryption';
 import * as SecureSettings from '../shared/services/secureSettings';
 import { useDigipeaterStore } from '../shared/store/useDigipeaterStore';
 
@@ -20,6 +21,17 @@ let routerCallbacks: PacketRouterCallbacks | null = null;
 
 export function setPacketRouterCallbacks(cbs: PacketRouterCallbacks | null): void {
   routerCallbacks = cbs;
+}
+
+async function formatMessageLineForLog(rawMessage: string): Promise<string> {
+  const [family, rescuers] = await Promise.all([
+    SecureSettings.getFamilyEncryptionKey(),
+    SecureSettings.getRescuersEncryptionKey(),
+  ]);
+  const dec = decodeIncomingAprsMessageBody(rawMessage, family, rescuers);
+  if (dec.kind === 'plain') return dec.text;
+  if (dec.kind === 'decrypted') return `${dec.group}: ${dec.text}`;
+  return '[Encrypted Message - Key Mismatch]';
 }
 
 async function upsertIncomingStation(
@@ -95,14 +107,15 @@ export async function routeDecodedPacket(rawPacket: string): Promise<void> {
       (parsed.payloadType === 'message' || parsed.payloadType === 'status') &&
       parsed.message
     ) {
+      const displayLine = await formatMessageLineForLog(parsed.message);
       await database.write(async () => {
         await database.get<MessageLog>('message_logs').create((r) => {
-          r.message = `[${parsed!.sourceCallsign}-${parsed!.sourceSsid}] ${parsed!.message}`;
+          r.message = `[${parsed!.sourceCallsign}-${parsed!.sourceSsid}] ${displayLine}`;
           r.sentAt = Date.now();
         });
       });
       routerCallbacks?.onIncomingMessage?.(
-        parsed.message,
+        displayLine,
         `${parsed.sourceCallsign}-${parsed.sourceSsid}`
       );
     }

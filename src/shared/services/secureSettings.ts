@@ -30,6 +30,10 @@ const KEYS = {
   selectedMissionPresetId: 'aegis_selected_mission_preset_id',
   /** Months after last charge / check when next battery review is due (warehouse items). */
   maintenanceAlertThresholdMonths: 'aegis_maintenance_alert_threshold_months',
+  /** Passphrase for APRS ENC: family channel (AES-256-CBC). */
+  familyEncryptionKey: 'aegis_family_encryption_key',
+  /** Passphrase for APRS ENC: rescuers channel. */
+  rescuersEncryptionKey: 'aegis_rescuers_encryption_key',
 } as const;
 
 const DEFAULTS = {
@@ -288,6 +292,34 @@ export async function getMaintenanceAlertThresholdMonths(): Promise<number> {
 export async function setMaintenanceAlertThresholdMonths(months: number): Promise<void> {
   const clamped = Math.max(1, Math.min(60, Math.round(months)));
   await SecureStore.setItemAsync(KEYS.maintenanceAlertThresholdMonths, String(clamped));
+}
+
+export async function getFamilyEncryptionKey(): Promise<string | null> {
+  const v = await SecureStore.getItemAsync(KEYS.familyEncryptionKey);
+  const t = v?.trim();
+  return t ? t : null;
+}
+
+export async function setFamilyEncryptionKey(key: string | null): Promise<void> {
+  if (key == null || !key.trim()) {
+    await SecureStore.deleteItemAsync(KEYS.familyEncryptionKey);
+    return;
+  }
+  await SecureStore.setItemAsync(KEYS.familyEncryptionKey, key);
+}
+
+export async function getRescuersEncryptionKey(): Promise<string | null> {
+  const v = await SecureStore.getItemAsync(KEYS.rescuersEncryptionKey);
+  const t = v?.trim();
+  return t ? t : null;
+}
+
+export async function setRescuersEncryptionKey(key: string | null): Promise<void> {
+  if (key == null || !key.trim()) {
+    await SecureStore.deleteItemAsync(KEYS.rescuersEncryptionKey);
+    return;
+  }
+  await SecureStore.setItemAsync(KEYS.rescuersEncryptionKey, key);
 }
 
 export async function getGpsUpdateIntervalMs(): Promise<number> {

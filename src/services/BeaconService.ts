@@ -8,7 +8,9 @@ import {
   buildPositionPacket,
   buildSmsgteMessageWithTelemetry,
   buildSmsgtePacket,
+  buildStatusPacket,
 } from './AprsService';
+import { APRS_STATUS_MESSAGE_MAX_LEN } from './aprsEncryption';
 import { routeDecodedPacket } from './DecodedPacketRouter';
 import { playAFSKPacket } from './AudioEngine';
 import * as SecureSettings from '../shared/services/secureSettings';
@@ -132,6 +134,40 @@ export async function sendBeaconWithUserGps(
       onWaveform: options.onWaveform,
     });
 
+    await routeDecodedPacket(packet);
+    return { success: true, packet };
+  } catch (e) {
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Sends APRS status packet (text-only `>`) for messaging — payload must fit APRS frame limits.
+ */
+export async function sendAprsStatusMessage(
+  message: string,
+  options: SendBeaconOptions = {}
+): Promise<SendBeaconResult> {
+  try {
+    const [callsign, ssid, txDelayMs, digitalGain] = await Promise.all([
+      SecureSettings.getCallsign(),
+      SecureSettings.getSsid(),
+      SecureSettings.getTxDelayMs(),
+      SecureSettings.getDigitalGain(),
+    ]);
+    const safe = message.trim().slice(0, APRS_STATUS_MESSAGE_MAX_LEN);
+    if (!safe) {
+      return { success: false, error: 'Message is empty' };
+    }
+    const packet = buildStatusPacket(callsign, ssid, safe);
+    await playAFSKPacket(packet, {
+      txDelayMs,
+      digitalGain,
+      onWaveform: options.onWaveform,
+    });
     await routeDecodedPacket(packet);
     return { success: true, packet };
   } catch (e) {

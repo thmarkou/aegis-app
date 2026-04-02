@@ -38,6 +38,8 @@ export function SettingsScreen() {
   const [testMode, setTestMode] = useState(false);
   const [showAprsDebug, setShowAprsDebug] = useState(false);
   const [maintenanceAlertMonths, setMaintenanceAlertMonths] = useState('6');
+  const [familyEncKey, setFamilyEncKey] = useState('');
+  const [rescuersEncKey, setRescuersEncKey] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -63,7 +65,9 @@ export function SettingsScreen() {
       SecureSettings.getLoopbackDecodeMode(),
       SecureSettings.getTestMode(),
       SecureSettings.getMaintenanceAlertThresholdMonths(),
-    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test, maintMo]) => {
+      SecureSettings.getFamilyEncryptionKey(),
+      SecureSettings.getRescuersEncryptionKey(),
+    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test, maintMo, fam, res]) => {
       setExpiryDays(String(d));
       setWeightPercent(String(p));
       setBodyWeightKg(bw != null ? String(bw) : '');
@@ -77,6 +81,8 @@ export function SettingsScreen() {
       setLoopbackDecodeMode(loopback);
       setTestMode(test);
       setMaintenanceAlertMonths(String(maintMo));
+      setFamilyEncKey(fam ?? '');
+      setRescuersEncKey(res ?? '');
     });
   }, []);
 
@@ -265,6 +271,40 @@ export function SettingsScreen() {
           keyboardType="phone-pad"
         />
       </View>
+
+      <Text style={tacticalStyles.sectionTitle}>APRS message encryption</Text>
+      <Text style={tacticalStyles.sectionDesc}>
+        Optional passphrases for COMMS status messages (AES-256-CBC, ENC: prefix). Stored in SecureStore.
+      </Text>
+      <Text style={tacticalStyles.label}>Family key</Text>
+      <TextInput
+        style={tacticalStyles.input}
+        value={familyEncKey}
+        onChangeText={setFamilyEncKey}
+        onBlur={async () => {
+          await SecureSettings.setFamilyEncryptionKey(familyEncKey.trim() || null);
+        }}
+        placeholder="Passphrase for Family (🔒)"
+        placeholderTextColor="#666"
+        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      <Text style={tacticalStyles.label}>Rescuers key</Text>
+      <TextInput
+        style={tacticalStyles.input}
+        value={rescuersEncKey}
+        onChangeText={setRescuersEncKey}
+        onBlur={async () => {
+          await SecureSettings.setRescuersEncryptionKey(rescuersEncKey.trim() || null);
+        }}
+        placeholder="Passphrase for Rescuers (🆘)"
+        placeholderTextColor="#666"
+        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
       <View style={[tacticalStyles.rowInline, { justifyContent: 'space-between', marginTop: 12 }]}>
         <View style={{ flex: 1, marginRight: 12 }}>
           <Text style={tacticalStyles.label}>Loopback decode (mic)</Text>

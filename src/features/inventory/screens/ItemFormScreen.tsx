@@ -21,18 +21,12 @@ import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
 import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
 import type KitPackItem from '../../../database/models/KitPackItem';
-import type ItemTemplate from '../../../database/models/ItemTemplate';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
-import { TemplatePicker, type TemplatePickResult } from '../components/TemplatePicker';
+import { deleteInventoryPoolItemCascade } from '../../../services/inventoryPoolDelete';
 import { BarcodeScannerModal, type BarcodeScanResult } from '../components/BarcodeScannerModal';
 import { refreshInventoryNotifications } from '../services/refreshInventoryNotifications';
-import {
-  POOL_CATEGORY_KEYS,
-  POOL_CATEGORY_LABELS,
-  mapLegacyCategoryToPoolCategory,
-  type PoolCategory,
-} from '../../../shared/constants/poolCategories';
+import { POOL_CATEGORY_KEYS, POOL_CATEGORY_LABELS, type PoolCategory } from '../../../shared/constants/poolCategories';
 import {
   findPowerDeviceByPoolItemId,
   syncPowerDeviceNameFromPoolItem,
@@ -67,7 +61,6 @@ export function ItemFormScreen() {
   const [longitude, setLongitude] = useState<number | null>(null);
   const [isWaypoint, setIsWaypoint] = useState(false);
   const [taggingLocation, setTaggingLocation] = useState(false);
-  const [pickerVisible, setPickerVisible] = useState(false);
   const [barcodeScannerVisible, setBarcodeScannerVisible] = useState(false);
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [barcode, setBarcode] = useState<string | null>(null);
@@ -166,12 +159,6 @@ export function ItemFormScreen() {
     return formatNextReviewDate(ms, maintenanceMonths);
   }, [lastChargeDate, maintenanceMonths]);
 
-  const handleTemplateSelect = (r: TemplatePickResult) => {
-    setName(r.name);
-    setPoolCategory(mapLegacyCategoryToPoolCategory(r.category));
-    setWeightGrams(String(r.weightGrams));
-  };
-
   const handleBarcodeScan = async (result: BarcodeScanResult) => {
     const poolCollection = database.get<InventoryPoolItem>('inventory_pool_items');
     let currentPoolId = poolItemId ?? null;
@@ -226,27 +213,16 @@ export function ItemFormScreen() {
       return;
     }
 
-    const templates = database.get<ItemTemplate>('item_templates');
-    const match = await templates.query().fetch();
-    const found = match.find((t) => t.barcode === result.barcode);
-    if (found) {
-      setName(found.name);
-      setPoolCategory(mapLegacyCategoryToPoolCategory(found.category));
-      setWeightGrams(String(found.weightGrams));
-      setScannedBarcode(found.barcode ?? null);
-      setBarcode(found.barcode ?? null);
-    } else {
-      setScannedBarcode(result.barcode);
-      setBarcode(result.barcode);
-      Alert.alert(
-        'New Barcode',
-        `Barcode ${result.barcode} not in catalog. Enter item name and save to add it for future scans.`,
-        [{ text: 'OK' }]
-      );
-      setName('');
-      setPoolCategory('tools');
-      setWeightGrams('');
-    }
+    setScannedBarcode(result.barcode);
+    setBarcode(result.barcode);
+    Alert.alert(
+      'New Barcode',
+      `Barcode ${result.barcode} scanned. Enter item details and save.`,
+      [{ text: 'OK' }]
+    );
+    setName('');
+    setPoolCategory('tools');
+    setWeightGrams('');
   };
 
   const handleTagLocation = async () => {
@@ -427,17 +403,6 @@ export function ItemFormScreen() {
           });
         }
       }
-
-      if (scannedBarcode) {
-        const templates = database.get<ItemTemplate>('item_templates');
-        await templates.create((r) => {
-          r.name = name.trim();
-          r.category = poolCategory;
-          r.weightGrams = w;
-          r.barcode = scannedBarcode;
-        });
-        setScannedBarcode(null);
-      }
     });
 
     if (poolIdForPowerSync) {
@@ -446,6 +411,35 @@ export function ItemFormScreen() {
 
     refreshInventoryNotifications().catch(() => {});
     navigation.goBack();
+  };
+
+  const canDeleteExistingPoolItem = poolItemId != null || packItemId != null;
+
+  const handleDeletePoolItem = () => {
+    Alert.alert('Delete item', 'Are you sure you want to delete this item?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            let pid = poolItemId ?? null;
+            if (!pid && packItemId) {
+              const pack = await database.get<KitPackItem>('kit_pack_items').find(packItemId);
+              pid = pack.poolItemId;
+            }
+            if (!pid) return;
+            try {
+              await deleteInventoryPoolItemCascade(pid);
+              refreshInventoryNotifications().catch(() => {});
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert('Error', e instanceof Error ? e.message : 'Delete failed');
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   return (
@@ -460,21 +454,13 @@ export function ItemFormScreen() {
           style={[tacticalStyles.input, styles.nameInput]}
           value={name}
           onChangeText={setName}
-          placeholder="Item name or select template"
+          placeholder="Item name"
           placeholderTextColor="#666"
         />
-        <TouchableOpacity style={styles.iconBtn} onPress={() => setPickerVisible(true)}>
-          <Ionicons name="search" size={20} color={tactical.amber} />
-        </TouchableOpacity>
         <TouchableOpacity style={styles.iconBtn} onPress={() => setBarcodeScannerVisible(true)}>
           <Ionicons name="barcode-outline" size={24} color={tactical.amber} />
         </TouchableOpacity>
       </View>
-      <TemplatePicker
-        visible={pickerVisible}
-        onClose={() => setPickerVisible(false)}
-        onSelect={handleTemplateSelect}
-      />
       <BarcodeScannerModal
         visible={barcodeScannerVisible}
         onClose={() => setBarcodeScannerVisible(false)}
@@ -785,6 +771,11 @@ export function ItemFormScreen() {
         placeholderTextColor="#666"
         multiline
       />
+      {canDeleteExistingPoolItem ? (
+        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeletePoolItem} activeOpacity={0.85}>
+          <Text style={styles.deleteBtnText}>Delete</Text>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity style={tacticalStyles.btnPrimary} onPress={() => void handleSave()}>
         <Text style={tacticalStyles.btnPrimaryText}>Save</Text>
       </TouchableOpacity>
@@ -795,6 +786,16 @@ export function ItemFormScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: tactical.black },
   content: { padding: 16, paddingBottom: 32 },
+  deleteBtn: {
+    marginBottom: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#b91c1c',
+    backgroundColor: 'rgba(185, 28, 28, 0.15)',
+    alignItems: 'center',
+  },
+  deleteBtnText: { color: '#f87171', fontSize: 16, fontWeight: '700' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   nameInput: { flex: 1, marginBottom: 0 },
   iconBtn: {

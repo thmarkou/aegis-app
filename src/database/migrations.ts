@@ -286,5 +286,21 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      // One-time wipe: inventory pool, pack lines, logistics devices, kits, blueprints.
+      // App then `ensurePatrolPackKit()` creates a single empty "35L Patrol Pack".
+      toVersion: 18,
+      steps: [
+        unsafeExecuteSql('DELETE FROM kit_pack_items;'),
+        unsafeExecuteSql('DELETE FROM inventory_pool_items;'),
+        unsafeExecuteSql('DELETE FROM power_devices;'),
+        unsafeExecuteSql('DELETE FROM item_templates;'),
+        unsafeExecuteSql('DELETE FROM kits;'),
+      ],
+    },
+    {
+      toVersion: 19,
+      steps: [unsafeExecuteSql('DROP TABLE IF EXISTS item_templates;')],
+    },
   ],
 });

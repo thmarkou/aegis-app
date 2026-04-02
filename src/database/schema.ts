@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 /** Keep `version` equal to the latest `toVersion` in `migrations.ts`. */
 export default appSchema({
-  version: 17,
+  version: 19,
   tables: [
     tableSchema({
       name: 'kits',
@@ -67,16 +67,6 @@ export default appSchema({
         { name: 'battery_mah', type: 'number' },
         { name: 'weight_grams', type: 'number' },
         { name: 'is_primary', type: 'boolean' },
-      ],
-    }),
-    tableSchema({
-      name: 'item_templates',
-      columns: [
-        { name: 'name', type: 'string', isIndexed: true },
-        { name: 'category', type: 'string', isIndexed: true },
-        { name: 'weight_grams', type: 'number' },
-        { name: 'expiry_date', type: 'number', isOptional: true },
-        { name: 'barcode', type: 'string', isOptional: true, isIndexed: true },
       ],
     }),
     tableSchema({

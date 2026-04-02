@@ -2,7 +2,6 @@
  * MISSION tab – Mission Prep checklist as root.
  */
 import React from 'react';
-import { Text, TouchableOpacity } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MissionPrepScreen } from '../../features/inventory/screens/MissionPrepScreen';
 import { KitListScreen } from '../../features/inventory/screens/KitListScreen';
@@ -17,10 +16,6 @@ import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScr
 import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
 import { MissionPresetListScreen } from '../../features/inventory/screens/MissionPresetListScreen';
 import { MissionPresetFormScreen } from '../../features/inventory/screens/MissionPresetFormScreen';
-import { TemplateListScreen } from '../../features/inventory/screens/TemplateListScreen';
-import { TemplateFormScreen } from '../../features/inventory/screens/TemplateFormScreen';
-import { tactical } from '../tacticalStyles';
-
 export type MissionStackParamList = {
   MissionPrep: undefined;
   Logistics: undefined;
@@ -33,8 +28,6 @@ export type MissionStackParamList = {
   InventoryPool: { filter?: 'needs_charge' };
   MissionPresetList: undefined;
   MissionPresetForm: { presetId?: string };
-  TemplateList: undefined;
-  TemplateForm: { templateId?: string };
   Profiles: undefined;
   ProfileForm: { profileId?: string };
 };
@@ -52,22 +45,7 @@ const TACTICAL_HEADER = {
 export function MissionStack() {
   return (
     <Stack.Navigator screenOptions={TACTICAL_HEADER}>
-      <Stack.Screen
-        name="MissionPrep"
-        component={MissionPrepScreen}
-        options={({ navigation }) => ({
-          title: 'MISSION PREP',
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => navigation.navigate('MissionPresetList')}
-              style={{ paddingHorizontal: 12, paddingVertical: 8 }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={{ color: tactical.amber, fontSize: 14, fontWeight: '600' }}>Edit Presets</Text>
-            </TouchableOpacity>
-          ),
-        })}
-      />
+      <Stack.Screen name="MissionPrep" component={MissionPrepScreen} options={{ title: 'MISSION PREP' }} />
       <Stack.Screen name="Logistics" component={LogisticsScreen} options={{ title: 'LOGISTICS' }} />
       <Stack.Screen
         name="PowerDeviceForm"
@@ -102,14 +80,6 @@ export function MissionStack() {
         component={MissionPresetFormScreen}
         options={({ route }) => ({
           title: route.params?.presetId ? 'Edit Preset' : 'New Preset',
-        })}
-      />
-      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Blueprints' }} />
-      <Stack.Screen
-        name="TemplateForm"
-        component={TemplateFormScreen}
-        options={({ route }) => ({
-          title: route.params?.templateId ? 'Edit Template' : 'New Template',
         })}
       />
       <Stack.Screen name="Profiles" component={ProfileScreen} options={{ title: 'Profiles' }} />

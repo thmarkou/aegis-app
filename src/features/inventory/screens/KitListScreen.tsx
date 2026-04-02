@@ -14,6 +14,7 @@ const KIT_ICON_MAP: Record<KitIconType, keyof typeof Ionicons.glyphMap> = {
   backpack: 'bag-outline',
   car: 'car-outline',
   home: 'home-outline',
+  edc_belt: 'file-tray-stacked-outline',
 };
 
 function getKitIcon(iconType: string | null): keyof typeof Ionicons.glyphMap {
@@ -139,6 +140,7 @@ export function KitListScreen() {
       <TouchableOpacity style={tacticalStyles.fab} onPress={handleAdd} accessibilityLabel="Add new kit">
         <Text style={tacticalStyles.fabText}>+</Text>
       </TouchableOpacity>
+
     </View>
   );
 }
@@ -148,6 +150,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
+    gap: 10,
   },
   newKitCta: {
     flexDirection: 'row',

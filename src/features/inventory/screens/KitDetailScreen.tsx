@@ -24,6 +24,7 @@ import type Profile from '../../../database/models/Profile';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { POOL_CATEGORY_LABELS, type PoolCategory } from '../../../shared/constants/poolCategories';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
+import { formatWeightGrams } from '../../../shared/utils/formatWeight';
 import { useWeightWarning } from '../hooks/useWeightWarning';
 import { BlinkingAmberWarning } from '../components/BlinkingAmberWarning';
 import { BlinkingRedWarning } from '../components/BlinkingRedWarning';
@@ -308,7 +309,7 @@ export function KitDetailScreen() {
                 <Text style={styles.poolCategoryTag}>{catLabel}</Text>
                 <View style={styles.itemMetaRow}>
                   <Text style={styles.itemMeta}>
-                    {pack.quantity} {pool.unit} · {(pool.weightGrams / 1000).toFixed(2)} kg / unit
+                    {pack.quantity} {pool.unit} · {formatWeightGrams(pool.weightGrams)} g / unit
                     {itemCal > 0 && ` · ${Math.round(itemCal)} kcal`}
                   </Text>
                 </View>

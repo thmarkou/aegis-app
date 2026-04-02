@@ -16,8 +16,8 @@ export interface Profile {
   updatedAt: string;
 }
 
-/** Kit icon type for visual identification (backpack, car, home). */
-export type KitIconType = 'backpack' | 'car' | 'home';
+/** Kit icon type for visual identification. */
+export type KitIconType = 'backpack' | 'car' | 'home' | 'edc_belt';
 
 export interface Kit {
   id: string;

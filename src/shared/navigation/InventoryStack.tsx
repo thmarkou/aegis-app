@@ -13,8 +13,6 @@ import { LogisticsScreen } from '../../features/inventory/screens/LogisticsScree
 import { PowerDeviceFormScreen } from '../../features/inventory/screens/PowerDeviceFormScreen';
 import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScreen';
 import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
-import { TemplateListScreen } from '../../features/inventory/screens/TemplateListScreen';
-import { TemplateFormScreen } from '../../features/inventory/screens/TemplateFormScreen';
 
 export type InventoryStackParamList = {
   KitList: undefined;
@@ -23,8 +21,6 @@ export type InventoryStackParamList = {
   ItemForm: { kitId?: string; poolItemId?: string; packItemId?: string };
   PoolPicker: { kitId: string };
   InventoryPool: { filter?: 'needs_charge' };
-  TemplateList: undefined;
-  TemplateForm: { templateId?: string };
   MissionPrep: undefined;
   Logistics: undefined;
   PowerDeviceForm: { deviceId?: string };
@@ -118,14 +114,6 @@ export function InventoryStack() {
       />
       <Stack.Screen name="PoolPicker" component={PoolPickerScreen} options={{ title: 'Add from Pool' }} />
       <Stack.Screen name="InventoryPool" component={InventoryPoolScreen} options={{ title: 'Inventory Pool' }} />
-      <Stack.Screen name="TemplateList" component={TemplateListScreen} options={{ title: 'Blueprints' }} />
-      <Stack.Screen
-        name="TemplateForm"
-        component={TemplateFormScreen}
-        options={({ route }) => ({
-          title: route.params?.templateId ? 'Edit Template' : 'New Template',
-        })}
-      />
       <Stack.Screen name="Profiles" component={ProfileScreen} options={{ title: 'Profiles' }} />
       <Stack.Screen name="ProfileForm" component={ProfileFormScreen} options={{ title: 'Profile' }} />
     </Stack.Navigator>

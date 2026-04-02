@@ -10,7 +10,6 @@ import KitPackItem from './models/KitPackItem';
 import Profile from './models/Profile';
 import Radio from './models/Radio';
 import Repeater from './models/Repeater';
-import ItemTemplate from './models/ItemTemplate';
 import MessageLog from './models/MessageLog';
 import IncomingStation from './models/IncomingStation';
 import PowerDevice from './models/PowerDevice';
@@ -40,7 +39,6 @@ export const database = new Database({
     Profile,
     Radio,
     Repeater,
-    ItemTemplate,
     MessageLog,
     IncomingStation,
     PowerDevice,

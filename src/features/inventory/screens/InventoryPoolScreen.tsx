@@ -1,12 +1,5 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  SectionList,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-} from 'react-native';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import {
   useNavigation,
   useFocusEffect,
@@ -23,13 +16,15 @@ import {
   type PoolCategory,
 } from '../../../shared/constants/poolCategories';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
-import { AddFromTemplatesModal } from '../components/AddFromTemplatesModal';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import {
   poolItemNeedsBatteryAttention,
   getBatteryAttentionLevel,
 } from '../../../services/batteryInventoryReview';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
+import { formatWeightGrams } from '../../../shared/utils/formatWeight';
+import { deleteInventoryPoolItemCascade } from '../../../services/inventoryPoolDelete';
+import { refreshInventoryNotifications } from '../services/refreshInventoryNotifications';
 
 type Section = { title: string; data: InventoryPoolItem[] };
 
@@ -39,7 +34,6 @@ export function InventoryPoolScreen() {
   const navigation = useNavigation<NavigationProp<ParamListBase>>();
   const route = useRoute<RouteProp<SharedStackParamList, 'InventoryPool'>>();
   const [sections, setSections] = useState<Section[]>([]);
-  const [templatesModalVisible, setTemplatesModalVisible] = useState(false);
   const [filterCat, setFilterCat] = useState<FilterMode>('all');
   const [maintMonths, setMaintMonths] = useState(6);
 
@@ -80,7 +74,9 @@ export function InventoryPoolScreen() {
     for (const key of POOL_CATEGORY_KEYS) {
       const rows = byCat[key];
       rows.sort((a, b) => a.name.localeCompare(b.name));
-      next.push({ title: POOL_CATEGORY_LABELS[key], data: rows });
+      if (rows.length > 0) {
+        next.push({ title: POOL_CATEGORY_LABELS[key], data: rows });
+      }
     }
     setSections(next);
   }, []);
@@ -112,18 +108,34 @@ export function InventoryPoolScreen() {
     [sections]
   );
 
+  const handleDeleteItem = (poolItem: InventoryPoolItem) => {
+    Alert.alert('Delete item', 'Are you sure you want to delete this item?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              await deleteInventoryPoolItemCascade(poolItem.id);
+              await load();
+              refreshInventoryNotifications().catch(() => {});
+            } catch (e) {
+              Alert.alert('Error', e instanceof Error ? e.message : 'Delete failed');
+            }
+          })();
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={tacticalStyles.screen}>
       <Text style={styles.intro}>
-        Your inventory catalog: one list for all pool items. Use + to add an item, or Add from Blueprints.
+        Physical warehouse catalog: one list for all pool items. Use + to add an item manually.
         Category chips and &quot;Needs charge&quot; filter this same list.
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipsScroll}
-        contentContainerStyle={styles.chipsRow}
-      >
+      <View style={styles.chipsWrap}>
         <TouchableOpacity
           style={[styles.chip, filterCat === 'all' && styles.chipOn]}
           onPress={() => applyFilter('all')}
@@ -153,29 +165,12 @@ export function InventoryPoolScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
-      <View style={styles.actionsRow}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => setTemplatesModalVisible(true)} activeOpacity={0.85}>
-          <Text style={styles.actionBtnText}>Add from Blueprints</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionBtnSecondary}
-          onPress={() => navigation.navigate('TemplateList')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.actionBtnSecondaryText}>Manage blueprints</Text>
-        </TouchableOpacity>
       </View>
-      <AddFromTemplatesModal
-        visible={templatesModalVisible}
-        onClose={() => setTemplatesModalVisible(false)}
-        onAdded={load}
-      />
       {totalPoolItems === 0 ? (
         <View style={styles.emptyWarehouse}>
           <Text style={styles.emptyWarehouseTitle}>Your Warehouse is empty.</Text>
           <Text style={styles.emptyWarehouseBody}>
-            Add items manually with &quot;+&quot; or use &quot;Add from Blueprints&quot;.
+            Add physical items with &quot;+&quot; — everything here is created and saved by you.
           </Text>
         </View>
       ) : (
@@ -190,34 +185,44 @@ export function InventoryPoolScreen() {
             const showBatt =
               level === 'needs_charge' || level === 'upcoming' || level === 'missing_data';
             return (
-              <TouchableOpacity
-                style={styles.row}
-                onPress={() => navigation.navigate('ItemForm', { poolItemId: item.id })}
-                activeOpacity={0.75}
-              >
-                <View style={styles.rowTitleRow}>
-                  <Text style={styles.rowName}>{item.name}</Text>
-                  {showBatt ? (
-                    <Text
-                      style={[
-                        styles.battBadge,
-                        level === 'needs_charge' || level === 'missing_data'
-                          ? styles.battBadgeRed
-                          : styles.battBadgeOrange,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {level === 'missing_data' || level === 'needs_charge'
-                        ? 'NEEDS CHARGE'
-                        : 'UPCOMING'}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={styles.rowMeta}>
-                  {(item.weightGrams / 1000).toFixed(2)} kg / unit
-                  {item.calories != null ? ` · ${item.calories} kcal` : ''}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.row}>
+                <TouchableOpacity
+                  style={styles.rowMain}
+                  onPress={() => navigation.navigate('ItemForm', { poolItemId: item.id })}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.rowTitleRow}>
+                    <Text style={styles.rowName}>{item.name}</Text>
+                    {showBatt ? (
+                      <Text
+                        style={[
+                          styles.battBadge,
+                          level === 'needs_charge' || level === 'missing_data'
+                            ? styles.battBadgeRed
+                            : styles.battBadgeOrange,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {level === 'missing_data' || level === 'needs_charge'
+                          ? 'NEEDS CHARGE'
+                          : 'UPCOMING'}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.rowMeta}>
+                    {formatWeightGrams(item.weightGrams)} g / unit
+                    {item.calories != null ? ` · ${item.calories} kcal` : ''}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteRowBtn}
+                  onPress={() => handleDeleteItem(item)}
+                  activeOpacity={0.75}
+                  accessibilityLabel="Delete item"
+                >
+                  <Text style={styles.deleteRowBtnText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             );
           }}
           ListEmptyComponent={
@@ -248,16 +253,17 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     lineHeight: 20,
   },
-  chipsScroll: { maxHeight: 44, marginBottom: 8 },
-  chipsRow: {
+  chipsWrap: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 16,
-    paddingBottom: 4,
+    paddingBottom: 8,
   },
   chip: {
-    paddingHorizontal: 14,
+    flexShrink: 0,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
@@ -279,43 +285,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipTextOn: { color: tactical.amber },
-  actionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  actionBtn: {
-    flexGrow: 1,
-    minWidth: 140,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: tactical.amber,
-    alignItems: 'center',
-  },
-  actionBtnText: {
-    color: tactical.black,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  actionBtnSecondary: {
-    flexGrow: 1,
-    minWidth: 140,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: tactical.zinc[700],
-    backgroundColor: tactical.zinc[900],
-    alignItems: 'center',
-  },
-  actionBtnSecondaryText: {
-    color: tactical.zinc[400],
-    fontSize: 14,
-    fontWeight: '600',
-  },
   listContent: { paddingBottom: 96 },
   emptyWarehouse: {
     marginHorizontal: 16,
@@ -350,13 +319,32 @@ const styles = StyleSheet.create({
     backgroundColor: tactical.black,
   },
   row: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
     marginHorizontal: 16,
     marginVertical: 4,
-    padding: 14,
     borderRadius: 12,
     backgroundColor: tactical.zinc[900],
     borderWidth: 1,
     borderColor: tactical.zinc[700],
+    overflow: 'hidden',
+  },
+  rowMain: {
+    flex: 1,
+    padding: 14,
+    minWidth: 0,
+  },
+  deleteRowBtn: {
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: tactical.zinc[700],
+    backgroundColor: 'rgba(185, 28, 28, 0.12)',
+  },
+  deleteRowBtnText: {
+    color: '#f87171',
+    fontSize: 13,
+    fontWeight: '700',
   },
   rowTitleRow: {
     flexDirection: 'row',

@@ -1,7 +1,7 @@
 /**
  * Tactical COMMS – dual mode: RADIO (beacon, last packet) and MESSAGING (SOS, draft, send).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,20 @@ import {
   Switch,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { setPacketRouterCallbacks } from '../../../services/DecodedPacketRouter';
 import { runDirectTest } from '../../../services/LoopbackTestService';
-import { sendBeaconWithUserGps, sendEmergencySmsgte } from '../../../services/BeaconService';
+import {
+  sendBeaconWithUserGps,
+  sendEmergencySmsgte,
+  sendAprsStatusMessage,
+} from '../../../services/BeaconService';
+import {
+  encryptAprsPayload,
+  maxPlaintextCharsForAprs,
+  APRS_STATUS_MESSAGE_MAX_LEN,
+} from '../../../services/aprsEncryption';
+import * as SecureSettings from '../../../shared/services/secureSettings';
 import { database } from '../../../database';
 import { WaveformMonitor } from '../components/WaveformMonitor';
 import { DigipeaterLog } from '../components/DigipeaterLog';
@@ -45,6 +55,8 @@ const BOX = {
 
 type TabNavigate = { navigate: (name: string, params?: object) => void };
 
+type EncryptionMode = 'off' | 'family' | 'rescuers';
+
 export function CommsScreenContent() {
   const navigation = useNavigation() as TabNavigate;
   const heartRate = useGarminStore((s) => s.heartRate ?? s.cachedHeartRate);
@@ -53,7 +65,36 @@ export function CommsScreenContent() {
   const [lastPacket, setLastPacket] = useState<string>('');
   const [waveformPcm, setWaveformPcm] = useState<Int16Array | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
+  const [encryptionMode, setEncryptionMode] = useState<EncryptionMode>('off');
+  const [encryptionKeyHint, setEncryptionKeyHint] = useState({ family: 0, rescuers: 0 });
   const [loggedMessages, setLoggedMessages] = useState<{ id: string; message: string; sentAt: number }[]>([]);
+
+  const refreshEncryptionHints = useCallback(async () => {
+    const [fk, rk] = await Promise.all([
+      SecureSettings.getFamilyEncryptionKey(),
+      SecureSettings.getRescuersEncryptionKey(),
+    ]);
+    setEncryptionKeyHint({
+      family: fk?.trim() ? maxPlaintextCharsForAprs(fk) : 0,
+      rescuers: rk?.trim() ? maxPlaintextCharsForAprs(rk) : 0,
+    });
+  }, []);
+
+  useEffect(() => {
+    void refreshEncryptionHints();
+  }, [refreshEncryptionHints]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshEncryptionHints();
+    }, [refreshEncryptionHints])
+  );
+
+  const maxDraftChars = useMemo(() => {
+    if (encryptionMode === 'off') return APRS_STATUS_MESSAGE_MAX_LEN;
+    if (encryptionMode === 'family') return encryptionKeyHint.family || 0;
+    return encryptionKeyHint.rescuers || 0;
+  }, [encryptionMode, encryptionKeyHint]);
 
   useEffect(() => {
     setPacketRouterCallbacks({
@@ -82,8 +123,41 @@ export function CommsScreenContent() {
 
   const handleQuickAction = (label: string) => setMessageDraft(label);
 
-  const handlePushToSend = () => {
-    if (messageDraft.trim()) setMessageDraft('');
+  const handlePushToSend = async () => {
+    const draft = messageDraft.trim();
+    if (!draft) {
+      Alert.alert('APRS', 'Type a message first.');
+      return;
+    }
+    setWaveformPcm(null);
+    let payload = draft;
+    try {
+      if (encryptionMode === 'family') {
+        const k = await SecureSettings.getFamilyEncryptionKey();
+        if (!k?.trim()) {
+          Alert.alert('APRS', 'Set Family key in Settings first.');
+          return;
+        }
+        payload = encryptAprsPayload(draft, k);
+      } else if (encryptionMode === 'rescuers') {
+        const k = await SecureSettings.getRescuersEncryptionKey();
+        if (!k?.trim()) {
+          Alert.alert('APRS', 'Set Rescuers key in Settings first.');
+          return;
+        }
+        payload = encryptAprsPayload(draft, k);
+      }
+    } catch (e) {
+      Alert.alert('Encrypt', e instanceof Error ? e.message : 'Encryption failed');
+      return;
+    }
+    const result = await sendAprsStatusMessage(payload, { onWaveform: (pcm) => setWaveformPcm(pcm) });
+    if (result.success) {
+      setLastPacket(result.packet);
+      setMessageDraft('');
+    } else {
+      Alert.alert('APRS', result.error);
+    }
   };
 
   const handleOpenAprsMap = () => {
@@ -227,6 +301,38 @@ export function CommsScreenContent() {
             </View>
           </View>
           <View style={styles.box}>
+            <Text style={styles.sectionLabel}>Encryption</Text>
+            <View style={styles.encRow}>
+              {(
+                [
+                  { mode: 'off' as const, label: 'Plain' },
+                  { mode: 'family' as const, label: '🔒 Family' },
+                  { mode: 'rescuers' as const, label: '🆘 Rescuers' },
+                ] as const
+              ).map(({ mode, label }) => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[styles.encChip, encryptionMode === mode && styles.encChipOn]}
+                  onPress={() => setEncryptionMode(mode)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.encChipText, encryptionMode === mode && styles.encChipTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.encHint}>
+              {encryptionMode === 'off'
+                ? `Plain text, max ~${APRS_STATUS_MESSAGE_MAX_LEN} chars.`
+                : encryptionMode === 'family'
+                  ? encryptionKeyHint.family > 0
+                    ? `Encrypted (Family). Max ~${encryptionKeyHint.family} characters before ENC: (fits one APRS frame).`
+                    : 'Set Family key in Settings.'
+                  : encryptionKeyHint.rescuers > 0
+                    ? `Encrypted (Rescuers). Max ~${encryptionKeyHint.rescuers} characters before ENC:.`
+                    : 'Set Rescuers key in Settings.'}
+            </Text>
+          </View>
+          <View style={styles.box}>
             <Text style={styles.sectionLabel}>Message Draft</Text>
             <TextInput
               style={styles.messageInput}
@@ -238,8 +344,14 @@ export function CommsScreenContent() {
               numberOfLines={4}
               textAlignVertical="top"
             />
+            {maxDraftChars > 0 ? (
+              <Text style={styles.charCount}>
+                {messageDraft.length} / {maxDraftChars}
+                {encryptionMode !== 'off' ? ' (plain text before encrypt)' : ''}
+              </Text>
+            ) : null}
           </View>
-          <TouchableOpacity style={styles.sendBtn} onPress={handlePushToSend} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.sendBtn} onPress={() => void handlePushToSend()} activeOpacity={0.8}>
             <Text style={styles.sendBtnText}>PUSH TO SEND (APRS)</Text>
           </TouchableOpacity>
           <View style={styles.box}>
@@ -265,7 +377,10 @@ export function CommsScreenContent() {
         <Text style={styles.loopbackText}>[INT_LOOPBACK_TEST]</Text>
       </TouchableOpacity>
 
-      <Text style={styles.notice}>NOTICE: ALL TRANSMISSIONS ARE PUBLIC. NO ENCRYPTION.</Text>
+      <Text style={styles.notice}>
+        NOTICE: RF is public. Plain APRS is readable by anyone. ENC: uses shared passphrases from Settings — not
+        licensed ham encryption on air; use only where regulations allow.
+      </Text>
     </ScrollView>
   );
 }
@@ -388,4 +503,26 @@ const styles = StyleSheet.create({
   },
   loopbackText: { color: ZINC_500, fontSize: 11 },
   notice: { color: ZINC_500, fontSize: 11, textAlign: 'center', marginBottom: 24 },
+  encRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  encChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: ZINC_700,
+    backgroundColor: ZINC_900,
+  },
+  encChipOn: {
+    borderColor: AMBER,
+    backgroundColor: 'rgba(255, 191, 0, 0.12)',
+  },
+  encChipText: { color: ZINC_500, fontSize: 13, fontWeight: '700' },
+  encChipTextOn: { color: AMBER },
+  encHint: { color: ZINC_500, fontSize: 11, lineHeight: 15, marginBottom: 4 },
+  charCount: { color: ZINC_500, fontSize: 11, marginTop: 6 },
 });
