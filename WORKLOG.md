@@ -494,7 +494,7 @@
 - **`batteryInventoryReview`**, **`powerLogisticsStatus`**, **`KitDetailScreen`**, **`MissionPrepScreen`**, **`InventoryPoolScreen`**, mission/inventory navigation — ευθυγράμμιση με unified pool και νέα alert λογική.
 
 ### Git
-- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-03).
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, `5066f38`, 2026-04-03).
 
 ---
 
