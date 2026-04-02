@@ -449,7 +449,7 @@
 - **`MissionStack`**: αφαίρεση διπλού **Edit Presets** από το header· παραμένει μόνο δίπλα στο **Plan Mission** (`MissionPrepScreen`).
 
 ### Git
-- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-02).
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, `1ca3774`, 2026-04-02).
 
 ---
 
