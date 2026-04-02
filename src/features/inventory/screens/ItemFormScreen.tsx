@@ -15,7 +15,7 @@ import {
   Pressable,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
@@ -28,16 +28,19 @@ import { BarcodeScannerModal, type BarcodeScanResult } from '../components/Barco
 import { refreshInventoryNotifications } from '../services/refreshInventoryNotifications';
 import { POOL_CATEGORY_KEYS, POOL_CATEGORY_LABELS, type PoolCategory } from '../../../shared/constants/poolCategories';
 import {
-  findPowerDeviceByPoolItemId,
-  syncPowerDeviceNameFromPoolItem,
-} from '../../../services/powerDevicePoolSync';
-import * as SecureSettings from '../../../shared/services/secureSettings';
+  CRITICAL_WINDOW_DAYS,
+  getPoolItemAlertDisplayFromFields,
+  formatMaintenanceDueDate,
+} from '../../../services/alertLeadTime';
 import {
   BATTERY_TYPE_OPTIONS,
   poolCategoryRequiresBattery,
-  getBatteryAttentionLevel,
-  formatNextReviewDate,
 } from '../../../services/batteryInventoryReview';
+import {
+  formatDateEuFromMs,
+  parseFlexibleDateToMs,
+  dateForPickerFromStored,
+} from '../../../shared/utils/formatDateEu';
 
 const CONDITIONS = ['New', 'Used'] as const;
 
@@ -65,14 +68,14 @@ export function ItemFormScreen() {
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [barcode, setBarcode] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [linkedPowerDeviceId, setLinkedPowerDeviceId] = useState<string | null>(null);
   const [batteryType, setBatteryType] = useState('');
   const [lastChargeDate, setLastChargeDate] = useState('');
   const [batteryCapacityMah, setBatteryCapacityMah] = useState('');
   const [chargingRequirements, setChargingRequirements] = useState('');
   const [batteryTypeModalVisible, setBatteryTypeModalVisible] = useState(false);
   const [showLastChargePicker, setShowLastChargePicker] = useState(false);
-  const [maintenanceMonths, setMaintenanceMonths] = useState(6);
+  const [maintenanceCycleDays, setMaintenanceCycleDays] = useState('90');
+  const [alertLeadDaysStr, setAlertLeadDaysStr] = useState('14');
 
   /** New rows: always create a Global Inventory Pool row; optionally link to kit via pack line. */
   const isNewItem = poolItemId == null && packItemId == null;
@@ -98,29 +101,18 @@ export function ItemFormScreen() {
     load().catch(() => {});
   }, [poolItemId, packItemId]);
 
-  useEffect(() => {
-    if (!poolItemId) {
-      setLinkedPowerDeviceId(null);
-      return;
-    }
-    void findPowerDeviceByPoolItemId(poolItemId).then((d) => setLinkedPowerDeviceId(d?.id ?? null));
-  }, [poolItemId]);
-
-  useEffect(() => {
-    void SecureSettings.getMaintenanceAlertThresholdMonths().then(setMaintenanceMonths);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void SecureSettings.getMaintenanceAlertThresholdMonths().then(setMaintenanceMonths);
-    }, [])
-  );
-
   function applyPoolToForm(pool: InventoryPoolItem) {
     setName(pool.name);
-    setPoolCategory((pool.poolCategory as PoolCategory) ?? 'tools');
+    const cat = (pool.poolCategory as PoolCategory) ?? 'tools';
+    setPoolCategory(cat);
     setUnit(pool.unit);
-    setExpiryDate(pool.expiryDate ? new Date(pool.expiryDate).toISOString().slice(0, 10) : '');
+    setExpiryDate(
+      poolCategoryRequiresBattery(cat)
+        ? ''
+        : pool.expiryDate
+          ? formatDateEuFromMs(pool.expiryDate)
+          : ''
+    );
     setWeightGrams(String(pool.weightGrams));
     setCalories(pool.calories != null ? String(pool.calories) : '');
     setWaterLitersPerUnit(
@@ -134,30 +126,55 @@ export function ItemFormScreen() {
     setBarcode(pool.barcode ?? null);
     setIsWaypoint(pool.isWaypoint);
     setBatteryType(pool.batteryType ?? '');
-    setLastChargeDate(
-      pool.lastChargeAt != null ? new Date(pool.lastChargeAt).toISOString().slice(0, 10) : ''
-    );
+    setLastChargeDate(pool.lastChargeAt != null ? formatDateEuFromMs(pool.lastChargeAt) : '');
     setBatteryCapacityMah(pool.batteryCapacityMah != null ? String(pool.batteryCapacityMah) : '');
     setChargingRequirements(pool.chargingRequirements ?? '');
+    setMaintenanceCycleDays(
+      pool.maintenanceCycleDays != null ? String(pool.maintenanceCycleDays) : '90'
+    );
+    setAlertLeadDaysStr(pool.alertLeadDays != null ? String(pool.alertLeadDays) : '14');
   }
 
   const hasLocation = latitude != null && longitude != null;
   const showQuantity = kitId != null && !isPoolOnlyEdit;
   const showBatterySection = poolCategoryRequiresBattery(poolCategory);
+  const showExpirySection = !poolCategoryRequiresBattery(poolCategory);
 
-  const formBatteryLevel = useMemo(() => {
-    const ms = lastChargeDate.trim()
-      ? new Date(lastChargeDate.trim() + 'T12:00:00').getTime()
-      : null;
-    return getBatteryAttentionLevel(poolCategory, ms, maintenanceMonths);
-  }, [poolCategory, lastChargeDate, maintenanceMonths]);
+  useEffect(() => {
+    if (poolCategoryRequiresBattery(poolCategory)) setExpiryDate('');
+  }, [poolCategory]);
 
-  const nextReviewLabel = useMemo(() => {
-    const ms = lastChargeDate.trim()
-      ? new Date(lastChargeDate.trim() + 'T12:00:00').getTime()
-      : null;
-    return formatNextReviewDate(ms, maintenanceMonths);
-  }, [lastChargeDate, maintenanceMonths]);
+  const formAlertPreview = useMemo(() => {
+    const expiryMs = expiryDate.trim() ? parseFlexibleDateToMs(expiryDate.trim()) : null;
+    const lastMs = lastChargeDate.trim() ? parseFlexibleDateToMs(lastChargeDate.trim()) : null;
+    const cycleParsed = parseInt(maintenanceCycleDays.trim(), 10);
+    const leadParsed =
+      alertLeadDaysStr.trim() === '' ? null : parseInt(alertLeadDaysStr.trim(), 10);
+    return getPoolItemAlertDisplayFromFields(
+      {
+        poolCategory,
+        expiryDateMs: expiryMs,
+        lastChargeAt: lastMs,
+        maintenanceCycleDays: !isNaN(cycleParsed) ? cycleParsed : null,
+        alertLeadDays: leadParsed != null && !isNaN(leadParsed) ? leadParsed : null,
+        batteryType,
+      },
+      Date.now()
+    );
+  }, [
+    poolCategory,
+    expiryDate,
+    lastChargeDate,
+    maintenanceCycleDays,
+    alertLeadDaysStr,
+    batteryType,
+  ]);
+
+  const maintenanceDueLabel = useMemo(() => {
+    const lastMs = lastChargeDate.trim() ? parseFlexibleDateToMs(lastChargeDate.trim()) : null;
+    const cycleParsed = parseInt(maintenanceCycleDays.trim(), 10);
+    return formatMaintenanceDueDate(lastMs, !isNaN(cycleParsed) ? cycleParsed : null);
+  }, [lastChargeDate, maintenanceCycleDays]);
 
   const handleBarcodeScan = async (result: BarcodeScanResult) => {
     const poolCollection = database.get<InventoryPoolItem>('inventory_pool_items');
@@ -291,13 +308,6 @@ export function ItemFormScreen() {
       Alert.alert('Error', 'Name is required');
       return;
     }
-    if (linkedPowerDeviceId && poolCategory !== 'power') {
-      Alert.alert(
-        'Category locked',
-        'This warehouse row is linked to a power device in Logistics. Keep category Power or edit the device under Logistics & charging.'
-      );
-      return;
-    }
     if (poolCategoryRequiresBattery(poolCategory)) {
       if (!batteryType.trim() || !lastChargeDate.trim()) {
         Alert.alert(
@@ -306,13 +316,42 @@ export function ItemFormScreen() {
         );
         return;
       }
+      const lastMs = parseFlexibleDateToMs(lastChargeDate.trim());
+      if (lastMs == null) {
+        Alert.alert('Error', 'Invalid last charge date. Use DD-MM-YYYY.');
+        return;
+      }
+      const cycle = parseInt(maintenanceCycleDays.trim(), 10);
+      if (isNaN(cycle) || cycle < 1 || cycle > 730) {
+        Alert.alert('Error', 'Maintenance cycle must be between 1 and 730 days');
+        return;
+      }
     }
-    const expiry = expiryDate.trim() ? new Date(expiryDate).getTime() : null;
+    const expiry =
+      poolCategoryRequiresBattery(poolCategory)
+        ? null
+        : expiryDate.trim()
+          ? parseFlexibleDateToMs(expiryDate.trim())
+          : null;
+    if (!poolCategoryRequiresBattery(poolCategory) && expiryDate.trim() && expiry == null) {
+      Alert.alert('Error', 'Invalid expiry date. Use DD-MM-YYYY.');
+      return;
+    }
+
+    const leadParsed = parseInt(alertLeadDaysStr.trim(), 10);
+    if (alertLeadDaysStr.trim() === '' || isNaN(leadParsed) || leadParsed < 1 || leadParsed > 3650) {
+      Alert.alert('Error', 'Alert lead time is required (1–3650 days before a deadline for yellow alerts).');
+      return;
+    }
+
+    const cycleDaysParsed = poolCategoryRequiresBattery(poolCategory)
+      ? parseInt(maintenanceCycleDays.trim(), 10)
+      : NaN;
 
     const battFields = poolCategoryRequiresBattery(poolCategory)
       ? {
           batteryType: batteryType.trim() || null,
-          lastChargeAt: new Date(lastChargeDate.trim() + 'T12:00:00').getTime(),
+          lastChargeAt: parseFlexibleDateToMs(lastChargeDate.trim())!,
           batteryCapacityMah: (() => {
             const t = batteryCapacityMah.trim().replace(',', '.');
             if (!t) return null;
@@ -320,15 +359,15 @@ export function ItemFormScreen() {
             return !isNaN(n) && n >= 0 ? n : null;
           })(),
           chargingRequirements: chargingRequirements.trim() || null,
+          maintenanceCycleDays: !isNaN(cycleDaysParsed) ? cycleDaysParsed : null,
         }
       : {
           batteryType: null,
           lastChargeAt: null,
           batteryCapacityMah: null,
           chargingRequirements: null,
+          maintenanceCycleDays: null,
         };
-
-    let poolIdForPowerSync: string | null = null;
 
     await database.write(async () => {
       const pools = database.get<InventoryPoolItem>('inventory_pool_items');
@@ -354,9 +393,10 @@ export function ItemFormScreen() {
           r.lastChargeAt = battFields.lastChargeAt;
           r.batteryCapacityMah = battFields.batteryCapacityMah;
           r.chargingRequirements = battFields.chargingRequirements;
+          r.maintenanceCycleDays = battFields.maintenanceCycleDays;
+          r.alertLeadDays = leadParsed;
           r.updatedAt = new Date();
         });
-        poolIdForPowerSync = pool.id;
       };
 
       if (isEditingPackLine && packItemId && kitId) {
@@ -390,6 +430,8 @@ export function ItemFormScreen() {
           r.lastChargeAt = battFields.lastChargeAt;
           r.batteryCapacityMah = battFields.batteryCapacityMah;
           r.chargingRequirements = battFields.chargingRequirements;
+          r.maintenanceCycleDays = battFields.maintenanceCycleDays;
+          r.alertLeadDays = leadParsed;
           r.createdAt = new Date();
           r.updatedAt = new Date();
         });
@@ -404,10 +446,6 @@ export function ItemFormScreen() {
         }
       }
     });
-
-    if (poolIdForPowerSync) {
-      await syncPowerDeviceNameFromPoolItem(poolIdForPowerSync, name.trim());
-    }
 
     refreshInventoryNotifications().catch(() => {});
     navigation.goBack();
@@ -489,17 +527,76 @@ export function ItemFormScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      {showExpirySection ? (
+        <>
+          <Text style={tacticalStyles.label}>Expiry</Text>
+          <View style={styles.expiryRow}>
+            <TouchableOpacity style={[tacticalStyles.input, styles.expiryInput]} onPress={() => setShowDatePicker(true)}>
+              <Text style={expiryDate ? styles.expiryText : styles.expiryPlaceholder}>
+                {expiryDate || 'DD-MM-YYYY · tap to select'}
+              </Text>
+            </TouchableOpacity>
+            {expiryDate ? (
+              <TouchableOpacity style={styles.clearExpiryBtn} onPress={() => setExpiryDate('')}>
+                <Text style={styles.clearExpiryText}>Clear</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {showDatePicker && (
+            <View style={styles.datePickerWrap}>
+              <DateTimePicker
+                value={expiryDate ? dateForPickerFromStored(expiryDate) : new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(_, date) => {
+                  if (Platform.OS === 'android') setShowDatePicker(false);
+                  if (date) setExpiryDate(formatDateEuFromMs(date.getTime()));
+                }}
+              />
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity
+                  style={[tacticalStyles.btnPrimary, styles.datePickerDone]}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={tacticalStyles.btnPrimaryText}>Done</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </>
+      ) : null}
+      <Text style={tacticalStyles.label}>Alert Lead Time (Days) *</Text>
+      <Text style={styles.fieldHintMuted}>
+        Required. Days before an expiry or maintenance deadline for a yellow warning. Red alerts start{' '}
+        {CRITICAL_WINDOW_DAYS} days before the deadline (and when overdue).
+      </Text>
+      <TextInput
+        style={tacticalStyles.input}
+        value={alertLeadDaysStr}
+        onChangeText={(t) => setAlertLeadDaysStr(t.replace(/[^0-9]/g, ''))}
+        placeholder="e.g. 14"
+        placeholderTextColor="#666"
+        keyboardType="number-pad"
+      />
+      {formAlertPreview !== 'ok' ? (
+        <Text
+          style={
+            formAlertPreview === 'warning' ? styles.alertBannerOrange : styles.alertBannerRed
+          }
+        >
+          {formAlertPreview === 'missing_data'
+            ? 'Missing battery type or last charge (battery categories).'
+            : formAlertPreview === 'critical'
+              ? 'Critical: expiry or maintenance deadline reached or passed.'
+              : 'Warning: within your lead time before a deadline.'}
+        </Text>
+      ) : null}
       {showBatterySection ? (
         <View style={styles.batterySection}>
           <Text style={styles.batterySectionTitle}>Battery & Charging Management</Text>
           <Text style={styles.batterySectionHint}>
-            Next review = last charge + {maintenanceMonths} mo (Settings · Maintenance alert threshold).
+            Maintenance cycle is in days. Next due date uses last charge + cycle (DD-MM-YYYY above).
           </Text>
-          {formBatteryLevel === 'needs_charge' || formBatteryLevel === 'missing_data' ? (
-            <Text style={styles.battAlertRed}>NEEDS CHARGE</Text>
-          ) : formBatteryLevel === 'upcoming' ? (
-            <Text style={styles.battAlertOrange}>UPCOMING MAINTENANCE</Text>
-          ) : null}
           <Text style={tacticalStyles.label}>Battery type *</Text>
           <TouchableOpacity
             style={[tacticalStyles.input, styles.dropdownBtn]}
@@ -517,18 +614,18 @@ export function ItemFormScreen() {
             activeOpacity={0.85}
           >
             <Text style={lastChargeDate ? styles.dropdownText : styles.dropdownPlaceholder}>
-              {lastChargeDate || 'Tap to select date'}
+              {lastChargeDate || 'DD-MM-YYYY · tap to select'}
             </Text>
           </TouchableOpacity>
           {showLastChargePicker && (
             <View style={styles.datePickerWrap}>
               <DateTimePicker
-                value={lastChargeDate ? new Date(lastChargeDate + 'T12:00:00') : new Date()}
+                value={lastChargeDate ? dateForPickerFromStored(lastChargeDate) : new Date()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={(_, date) => {
                   if (Platform.OS === 'android') setShowLastChargePicker(false);
-                  if (date) setLastChargeDate(date.toISOString().slice(0, 10));
+                  if (date) setLastChargeDate(formatDateEuFromMs(date.getTime()));
                 }}
               />
               {Platform.OS === 'ios' && (
@@ -558,8 +655,20 @@ export function ItemFormScreen() {
             placeholder="e.g. 12V / 2A USB-C"
             placeholderTextColor="#666"
           />
-          <Text style={tacticalStyles.label}>Next review date (read-only)</Text>
-          <Text style={styles.readOnlyValue}>{nextReviewLabel}</Text>
+          <Text style={tacticalStyles.label}>Maintenance cycle (days) *</Text>
+          <Text style={styles.batterySectionHint}>
+            Logistics & APRS PWR: STALE if no charge logged within this window (default 90).
+          </Text>
+          <TextInput
+            style={tacticalStyles.input}
+            value={maintenanceCycleDays}
+            onChangeText={setMaintenanceCycleDays}
+            placeholder="90"
+            placeholderTextColor="#666"
+            keyboardType="number-pad"
+          />
+          <Text style={tacticalStyles.label}>Next maintenance due (read-only)</Text>
+          <Text style={styles.readOnlyValue}>{maintenanceDueLabel}</Text>
         </View>
       ) : null}
       <Modal
@@ -621,40 +730,6 @@ export function ItemFormScreen() {
             placeholder="pcs"
             placeholderTextColor="#666"
           />
-        </View>
-      )}
-      <Text style={tacticalStyles.label}>Expiry</Text>
-      <View style={styles.expiryRow}>
-        <TouchableOpacity style={[tacticalStyles.input, styles.expiryInput]} onPress={() => setShowDatePicker(true)}>
-          <Text style={expiryDate ? styles.expiryText : styles.expiryPlaceholder}>
-            {expiryDate || 'Tap to select date'}
-          </Text>
-        </TouchableOpacity>
-        {expiryDate ? (
-          <TouchableOpacity style={styles.clearExpiryBtn} onPress={() => setExpiryDate('')}>
-            <Text style={styles.clearExpiryText}>Clear</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-      {showDatePicker && (
-        <View style={styles.datePickerWrap}>
-          <DateTimePicker
-            value={expiryDate ? new Date(expiryDate) : new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(_, date) => {
-              if (Platform.OS === 'android') setShowDatePicker(false);
-              if (date) setExpiryDate(date.toISOString().slice(0, 10));
-            }}
-          />
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity
-              style={[tacticalStyles.btnPrimary, styles.datePickerDone]}
-              onPress={() => setShowDatePicker(false)}
-            >
-              <Text style={tacticalStyles.btnPrimaryText}>Done</Text>
-            </TouchableOpacity>
-          )}
         </View>
       )}
       <Text style={tacticalStyles.label}>Weight (g)</Text>
@@ -865,6 +940,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     marginBottom: 10,
+  },
+  fieldHintMuted: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  alertBannerRed: {
+    color: '#f87171',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  alertBannerOrange: {
+    color: '#fb923c',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 14,
+    lineHeight: 18,
   },
   battAlertRed: {
     color: '#f87171',

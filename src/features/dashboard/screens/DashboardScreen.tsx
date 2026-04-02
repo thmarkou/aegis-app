@@ -10,7 +10,7 @@ import {
   RefreshControl,
   Linking,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { tactical } from '../../../shared/tacticalStyles';
@@ -253,7 +253,6 @@ function TelemetryCard({
 }
 
 export function DashboardScreen() {
-  const navigation = useNavigation();
   const {
     readinessScore,
     totalWeightKg,
@@ -264,9 +263,9 @@ export function DashboardScreen() {
     altitudeM,
     distWalkedKm,
     weather,
-    maintenanceExpiringSoon,
-    maintenanceStalePower,
-    batteryReviewDueCount,
+    alertWarningCount,
+    alertCriticalCount,
+    alertMissingCount,
     refresh,
   } = useDashboardData();
 
@@ -320,22 +319,7 @@ export function DashboardScreen() {
   const statusColor = isReady ? '#22c55e' : '#ef4444';
 
   const maintenanceNeedsAttention =
-    maintenanceExpiringSoon > 0 ||
-    maintenanceStalePower > 0 ||
-    batteryReviewDueCount > 0;
-
-  const handleOpenLogistics = () => {
-    (navigation as { navigate: (name: string, params?: object) => void }).navigate('Mission', {
-      screen: 'Logistics',
-    });
-  };
-
-  const handleOpenInventoryNeedsCharge = () => {
-    (navigation as { navigate: (name: string, params?: object) => void }).navigate('Mission', {
-      screen: 'InventoryPool',
-      params: { filter: 'needs_charge' },
-    });
-  };
+    alertWarningCount > 0 || alertCriticalCount > 0 || alertMissingCount > 0;
 
   const handleSosPressIn = () => {
     sosTimerRef.current = setInterval(() => {
@@ -421,25 +405,13 @@ export function DashboardScreen() {
           ]}
         >
           {[
-            maintenanceExpiringSoon > 0
-              ? `${maintenanceExpiringSoon} item(s) expiring soon`
-              : null,
-            maintenanceStalePower > 0 ? `${maintenanceStalePower} power device(s) STALE` : null,
-            batteryReviewDueCount > 0
-              ? `${batteryReviewDueCount} inventory item(s) need charge / review`
-              : null,
+            alertCriticalCount > 0 ? `${alertCriticalCount} critical (red / overdue)` : null,
+            alertWarningCount > 0 ? `${alertWarningCount} yellow (lead window)` : null,
+            alertMissingCount > 0 ? `${alertMissingCount} missing battery fields` : null,
           ]
             .filter(Boolean)
             .join(' · ') || 'No maintenance alerts.'}
         </Text>
-        <Pressable style={styles.maintenanceHint} onPress={handleOpenLogistics} hitSlop={8}>
-          <Text style={styles.maintenanceHintText}>Logistics & power →</Text>
-        </Pressable>
-        <Pressable style={styles.maintenanceHint} onPress={handleOpenInventoryNeedsCharge} hitSlop={8}>
-          <Text style={styles.maintenanceHintText}>
-            Inventory pool{batteryReviewDueCount > 0 ? ` · ${batteryReviewDueCount} need charge` : ''} →
-          </Text>
-        </Pressable>
       </View>
 
       <View style={styles.telemetryGrid}>

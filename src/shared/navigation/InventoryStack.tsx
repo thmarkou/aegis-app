@@ -10,7 +10,6 @@ import { ProfileScreen } from '../../features/inventory/screens/ProfileScreen';
 import { ProfileFormScreen } from '../../features/inventory/screens/ProfileFormScreen';
 import { MissionPrepScreen } from '../../features/inventory/screens/MissionPrepScreen';
 import { LogisticsScreen } from '../../features/inventory/screens/LogisticsScreen';
-import { PowerDeviceFormScreen } from '../../features/inventory/screens/PowerDeviceFormScreen';
 import { PoolPickerScreen } from '../../features/inventory/screens/PoolPickerScreen';
 import { InventoryPoolScreen } from '../../features/inventory/screens/InventoryPoolScreen';
 
@@ -23,7 +22,6 @@ export type InventoryStackParamList = {
   InventoryPool: { filter?: 'needs_charge' };
   MissionPrep: undefined;
   Logistics: undefined;
-  PowerDeviceForm: { deviceId?: string };
   Profiles: undefined;
   ProfileForm: { profileId?: string };
 };
@@ -71,13 +69,6 @@ export function InventoryStack() {
       />
       <Stack.Screen name="MissionPrep" component={MissionPrepScreen} options={{ title: 'Mission Prep' }} />
       <Stack.Screen name="Logistics" component={LogisticsScreen} options={{ title: 'LOGISTICS' }} />
-      <Stack.Screen
-        name="PowerDeviceForm"
-        component={PowerDeviceFormScreen}
-        options={({ route }) => ({
-          title: route.params?.deviceId ? 'Edit device' : 'New device',
-        })}
-      />
       <Stack.Screen
         name="KitDetail"
         component={KitDetailScreen}

@@ -12,7 +12,6 @@ import Radio from './models/Radio';
 import Repeater from './models/Repeater';
 import MessageLog from './models/MessageLog';
 import IncomingStation from './models/IncomingStation';
-import PowerDevice from './models/PowerDevice';
 import MissionPreset from './models/MissionPreset';
 
 /** Raw adapter — use for `initializingPromise` (Compat wrapper does not expose it reliably). */
@@ -41,7 +40,6 @@ export const database = new Database({
     Repeater,
     MessageLog,
     IncomingStation,
-    PowerDevice,
     MissionPreset,
   ],
 });

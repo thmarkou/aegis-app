@@ -27,6 +27,8 @@ export default class InventoryPoolItem extends Model {
   @field('last_charge_at') lastChargeAt!: number | null;
   @field('battery_capacity_mah') batteryCapacityMah!: number | null;
   @field('charging_requirements') chargingRequirements!: string | null;
+  @field('maintenance_cycle_days') maintenanceCycleDays!: number | null;
+  @field('alert_lead_days') alertLeadDays!: number | null;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
 

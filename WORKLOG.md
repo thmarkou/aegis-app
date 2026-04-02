@@ -453,6 +453,51 @@
 
 ---
 
+## 2026-04-03 (Παρασκευή) – Ενοποίηση Logistics/Warehouse, alert lead, Dashboard & ειδοποιήσεις
+
+### Database (schema v20 → v21)
+- **v20**: Ενοποίηση **Logistics** με **Warehouse** — μόνο `inventory_pool_items`: `maintenance_cycle_days`, merge δεδομένων από `power_devices`, εισαγωγή orphan rows ως pool items κατηγορίας `power`, **`DROP TABLE power_devices`**.
+- **v21**: Στήλη **`alert_lead_days`** (optional) σε `inventory_pool_items`.
+- Αφαίρεση μοντέλου **`PowerDevice`**, **`PowerDeviceFormScreen`**, **`seedPowerDevices`**, **`powerDevicePoolSync`**· ενημέρωση **`inventoryPoolDelete`**, navigation stacks, **`App.tsx`** / **`database/index.ts`**.
+
+### Λογική ειδοποιήσεων ([`alertLeadTime.ts`](src/services/alertLeadTime.ts))
+- **`CRITICAL_WINDOW_DAYS = 3`**: κόκκινο overdue **ή** μέσα στις τελευταίες 3 ημέρες πριν deadline (expiry + maintenance).
+- Κίτρινο: παράθυρο **`alert_lead_days`** πριν το deadline, εκτός του 3ημέρου.
+- Expiry **δεν** μετράει για κατηγορίες **BATTERY_POOL_CATEGORY_KEYS** (συμφωνία με UI).
+- **`getPoolItemNotificationDeadlines`**, **`categoryNeedsBattery`** (export) για notifications/APRS.
+
+### Logistics & φόρτιση ([`logisticsCharge.ts`](src/services/logisticsCharge.ts))
+- **`setPoolItemLastChargeAt(poolItemId, ms)`** — κοινή εγγραφή `last_charge_at`· **`markPoolItemChargedNow`** το καλεί με `Date.now()`.
+- **`LogisticsScreen`**: «Charged today» πάνω σε pool rows (όχι ξεχωριστό πίνακα συσκευών).
+
+### Item form & ημερομηνίες
+- **[`formatDateEu.ts`](src/shared/utils/formatDateEu.ts)**: DD-MM-YYYY για expiry / last charge.
+- **Expiry**: εμφανίζεται **μόνο** όταν η κατηγορία **δεν** είναι battery pool· στο save τα battery items παίρνουν `expiryDate = null`.
+- **Alert Lead Time**: **υποχρεωτικό** 1–3650 ημερών, default UI **14**· hints για κίτρινο vs κόκκινο 3ημέρου.
+
+### Dashboard ([`useDashboardData.ts`](src/features/dashboard/hooks/useDashboardData.ts), [`DashboardScreen.tsx`](src/features/dashboard/screens/DashboardScreen.tsx))
+- Μετρητές **`alertWarningCount`**, **`alertCriticalCount`**, **`alertMissingCount`** από **`getPoolItemAlertDisplay`** (όχι σταθερά 30 ημερών / STALE `power_devices`).
+- **`expAlerts`** = άθροισμα ειδοποιήσεων· αφαίρεση links **Logistics & power →** και **Inventory pool →** από την κάρτα MAINTENANCE.
+
+### Τοπικές ειδοποιήσεις ([`expirationNotifications.ts`](src/features/inventory/services/expirationNotifications.ts))
+- Scheduler ανά item/deadline: **warning** στο lead, **critical** στο 3ήμερο (08:00 τοπικά)· ακύρωση legacy prefixes `expiry-*`, `proactive-expiry-*`, `inv-alert-*`· όριο ~60 scheduled triggers.
+- **[`refreshInventoryNotifications.ts`](src/features/inventory/services/refreshInventoryNotifications.ts)**: μόνο **`scheduleExpiryNotifications`**.
+- **[`proactiveInventoryNotifications.ts`](src/features/inventory/services/proactiveInventoryNotifications.ts)**: stub (ενσωματώθηκε στο νέο flow).
+
+### APRS inventory status ([`inventoryAprsStatus.ts`](src/services/inventoryAprsStatus.ts))
+- OK / WARN / LOW από **`getPoolItemAlertDisplay`** (όχι global `getExpiryDays`).
+
+### Settings ([`SettingsScreen.tsx`](src/features/crisis/screens/SettingsScreen.tsx))
+- Αφαίρεση ενοτήτων **Battery & warehouse maintenance** (μήνες) και **Expiry notifications** (global ημέρες)· η ρύθμιση είναι ανά είδος στο Item / warehouse.
+
+### Λοιπά αρχεία (συνοδευτικές ενημερώσεις)
+- **`batteryInventoryReview`**, **`powerLogisticsStatus`**, **`KitDetailScreen`**, **`MissionPrepScreen`**, **`InventoryPoolScreen`**, mission/inventory navigation — ευθυγράμμιση με unified pool και νέα alert λογική.
+
+### Git
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-03).
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

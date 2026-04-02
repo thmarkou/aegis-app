@@ -21,7 +21,7 @@ import * as SecureSettings from '../../../shared/services/secureSettings';
 import { cancelEmergencyBroadcast } from '../../../services/EmergencyService';
 import { database } from '../../../database';
 import type Kit from '../../../database/models/Kit';
-import type PowerDevice from '../../../database/models/PowerDevice';
+import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
 import type MissionPreset from '../../../database/models/MissionPreset';
 import { computeKitNutritionTotals, formatReadinessAgainstPreset } from '../../../services/missionReadiness';
 
@@ -48,7 +48,7 @@ export function MissionPrepScreen() {
   const [activeKitId, setActiveKitId] = useState<string | null>(null);
   const [kits, setKits] = useState<Kit[]>([]);
   const [poolCount, setPoolCount] = useState(0);
-  const [powerDevices, setPowerDevices] = useState<PowerDevice[]>([]);
+  const [batteryTrackedCount, setBatteryTrackedCount] = useState(0);
   const [readinessLine, setReadinessLine] = useState<string>('');
   const [readinessOk, setReadinessOk] = useState(true);
   const [loadingReadiness, setLoadingReadiness] = useState(true);
@@ -152,12 +152,12 @@ export function MissionPrepScreen() {
     setChecks(state);
     const tm = await SecureSettings.getTestMode();
     setTestMode(tm);
-    const [poolN, devices] = await Promise.all([
+    const [poolN, poolRows] = await Promise.all([
       database.get('inventory_pool_items').query().fetchCount(),
-      database.get<PowerDevice>('power_devices').query().fetch(),
+      database.get<InventoryPoolItem>('inventory_pool_items').query().fetch(),
     ]);
     setPoolCount(poolN);
-    setPowerDevices(devices);
+    setBatteryTrackedCount(poolRows.filter((r) => !!(r.batteryType && r.batteryType.trim())).length);
   }, []);
 
   const refreshReadiness = useCallback(async () => {
@@ -283,7 +283,7 @@ export function MissionPrepScreen() {
         <View style={styles.blockBody}>
           <Text style={styles.blockPrimary}>Logistics & charging</Text>
           <Text style={styles.blockSecondary}>
-            {powerDevices.length} device{powerDevices.length === 1 ? '' : 's'} tracked
+            {batteryTrackedCount} battery-tracked item{batteryTrackedCount === 1 ? '' : 's'}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color={tactical.zinc[500]} />

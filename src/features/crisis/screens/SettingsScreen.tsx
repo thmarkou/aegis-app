@@ -21,7 +21,6 @@ export function SettingsScreen() {
   const navigation = useNavigation<Nav>();
   const isAdmin = useAppStore((s) => s.authRole === 'admin');
   const logout = useAppStore((s) => s.logout);
-  const [expiryDays, setExpiryDays] = useState('14');
   const [weightPercent, setWeightPercent] = useState('20');
   const [bodyWeightKg, setBodyWeightKg] = useState('');
   const [maxHeartRate, setMaxHeartRate] = useState('');
@@ -37,7 +36,6 @@ export function SettingsScreen() {
   const [loopbackDecodeMode, setLoopbackDecodeMode] = useState(false);
   const [testMode, setTestMode] = useState(false);
   const [showAprsDebug, setShowAprsDebug] = useState(false);
-  const [maintenanceAlertMonths, setMaintenanceAlertMonths] = useState('6');
   const [familyEncKey, setFamilyEncKey] = useState('');
   const [rescuersEncKey, setRescuersEncKey] = useState('');
 
@@ -52,7 +50,6 @@ export function SettingsScreen() {
 
   useEffect(() => {
     Promise.all([
-      SecureSettings.getExpiryDays(),
       SecureSettings.getWeightPercent(),
       SecureSettings.getBodyWeightKg(),
       SecureSettings.getMaxHeartRate(),
@@ -64,11 +61,9 @@ export function SettingsScreen() {
       SecureSettings.getEmergencySmsNumber(),
       SecureSettings.getLoopbackDecodeMode(),
       SecureSettings.getTestMode(),
-      SecureSettings.getMaintenanceAlertThresholdMonths(),
       SecureSettings.getFamilyEncryptionKey(),
       SecureSettings.getRescuersEncryptionKey(),
-    ]).then(([d, p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test, maintMo, fam, res]) => {
-      setExpiryDays(String(d));
+    ]).then(([p, bw, mhr, c, s, sort, tx, gain, emergency, loopback, test, fam, res]) => {
       setWeightPercent(String(p));
       setBodyWeightKg(bw != null ? String(bw) : '');
       setMaxHeartRate(mhr != null ? String(mhr) : '');
@@ -80,30 +75,10 @@ export function SettingsScreen() {
       setEmergencySms(emergency ?? '');
       setLoopbackDecodeMode(loopback);
       setTestMode(test);
-      setMaintenanceAlertMonths(String(maintMo));
       setFamilyEncKey(fam ?? '');
       setRescuersEncKey(res ?? '');
     });
   }, []);
-
-  const handleSaveExpiry = async () => {
-    const n = parseInt(expiryDays, 10);
-    if (isNaN(n) || n < 1 || n > 365) {
-      Alert.alert('Invalid', 'Enter 1–365 days');
-      return;
-    }
-    await SecureSettings.setExpiryDays(n);
-  };
-
-  const handleSaveMaintenanceMonths = async () => {
-    const n = parseInt(maintenanceAlertMonths, 10);
-    if (isNaN(n) || n < 1 || n > 60) {
-      Alert.alert('Invalid', 'Enter 1–60 months');
-      return;
-    }
-    await SecureSettings.setMaintenanceAlertThresholdMonths(n);
-    Alert.alert('Saved', 'Battery review window updated for warehouse items.');
-  };
 
   const handleSaveWeight = async () => {
     const n = parseInt(weightPercent, 10);
@@ -195,35 +170,6 @@ export function SettingsScreen() {
           trackColor={{ false: tactical.zinc[700], true: tactical.amber }}
           thumbColor={sortByExpiry ? tactical.black : tactical.zinc[400]}
         />
-      </View>
-
-      <Text style={tacticalStyles.sectionTitle}>Battery & warehouse maintenance</Text>
-      <Text style={tacticalStyles.sectionDesc}>
-        Maintenance_Alert_Threshold_Months: next review date = last charge date + this many months (Comms/Nav,
-        radios, power, lighting items).
-      </Text>
-      <View style={tacticalStyles.rowInline}>
-        <TextInput
-          style={tacticalStyles.inputSmall}
-          value={maintenanceAlertMonths}
-          onChangeText={setMaintenanceAlertMonths}
-          onBlur={handleSaveMaintenanceMonths}
-          keyboardType="number-pad"
-        />
-        <Text style={{ color: tactical.zinc[500], fontSize: 16 }}>months</Text>
-      </View>
-
-      <Text style={tacticalStyles.sectionTitle}>Expiry notifications</Text>
-      <Text style={tacticalStyles.sectionDesc}>Notify this many days before item expiry.</Text>
-      <View style={tacticalStyles.rowInline}>
-        <TextInput
-          style={tacticalStyles.inputSmall}
-          value={expiryDays}
-          onChangeText={setExpiryDays}
-          onBlur={handleSaveExpiry}
-          keyboardType="number-pad"
-        />
-        <Text style={{ color: tactical.zinc[500], fontSize: 16 }}>days</Text>
       </View>
 
       <Text style={tacticalStyles.sectionTitle}>APRS / Radio</Text>

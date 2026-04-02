@@ -17,7 +17,6 @@ import { loadSettingsIntoStore } from './src/shared/store/settingsSync';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import { refreshInventoryNotifications } from './src/features/inventory/services/refreshInventoryNotifications';
-import { seedPowerDevices } from './src/database/seedPowerDevices';
 import { seedMissionPresets } from './src/database/seedMissionPresets';
 import { initGarminService } from './src/shared/services/GarminSyncService';
 import { GlobalEmergencyOverlay } from './src/shared/components/GlobalEmergencyOverlay';
@@ -61,7 +60,6 @@ export default function App() {
         if (cancelled) return;
         await loadSettingsIntoStore();
         await ensurePatrolPackKit();
-        await seedPowerDevices();
         await seedMissionPresets();
         refreshInventoryNotifications().catch((e) => console.warn('[AEGIS] Inventory notifications:', e));
         initGarminService().catch((e) => console.warn('[AEGIS] Garmin BLE init:', e));

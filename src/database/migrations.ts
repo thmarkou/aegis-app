@@ -302,5 +302,71 @@ export default schemaMigrations({
       toVersion: 19,
       steps: [unsafeExecuteSql('DROP TABLE IF EXISTS item_templates;')],
     },
+    {
+      // Unify Logistics with Warehouse: battery + maintenance live on `inventory_pool_items` only.
+      toVersion: 20,
+      steps: [
+        addColumns({
+          table: 'inventory_pool_items',
+          columns: [{ name: 'maintenance_cycle_days', type: 'number', isOptional: true }],
+        }),
+        unsafeExecuteSql(
+          `UPDATE inventory_pool_items SET
+            maintenance_cycle_days = COALESCE(
+              (SELECT p.maintenance_cycle_days FROM power_devices p WHERE p.pool_item_id = inventory_pool_items.id),
+              maintenance_cycle_days
+            ),
+            last_charge_at = COALESCE(
+              (SELECT p.last_full_charge_at FROM power_devices p WHERE p.pool_item_id = inventory_pool_items.id),
+              last_charge_at
+            ),
+            battery_type = CASE
+              WHEN battery_type IS NULL OR battery_type = '' THEN
+                (SELECT p.battery_type FROM power_devices p WHERE p.pool_item_id = inventory_pool_items.id)
+              ELSE battery_type
+            END
+          WHERE id IN (SELECT pool_item_id FROM power_devices WHERE pool_item_id IS NOT NULL);`
+        ),
+        unsafeExecuteSql(
+          `INSERT INTO inventory_pool_items (
+            id, _changed, _status,
+            name, pool_category, unit, weight_grams,
+            expiry_date, calories, water_liters_per_unit, is_essential, condition, notes, barcode, latitude, longitude, is_waypoint,
+            battery_type, last_charge_at, battery_capacity_mah, charging_requirements, maintenance_cycle_days,
+            created_at, updated_at
+          )
+          SELECT
+            lower(hex(randomblob(16))),
+            0,
+            '',
+            name,
+            'power',
+            'pcs',
+            0,
+            NULL, NULL, NULL,
+            0,
+            NULL, NULL, NULL, NULL, NULL,
+            0,
+            battery_type,
+            last_full_charge_at,
+            NULL, NULL,
+            COALESCE(maintenance_cycle_days, 90),
+            created_at,
+            updated_at
+          FROM power_devices
+          WHERE pool_item_id IS NULL;`
+        ),
+        unsafeExecuteSql('DROP TABLE IF EXISTS power_devices;'),
+      ],
+    },
+    {
+      toVersion: 21,
+      steps: [
+        addColumns({
+          table: 'inventory_pool_items',
+          columns: [{ name: 'alert_lead_days', type: 'number', isOptional: true }],
+        }),
+      ],
+    },
   ],
 });

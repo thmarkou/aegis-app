@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, SectionList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import {
   useNavigation,
@@ -16,11 +16,7 @@ import {
   type PoolCategory,
 } from '../../../shared/constants/poolCategories';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
-import * as SecureSettings from '../../../shared/services/secureSettings';
-import {
-  poolItemNeedsBatteryAttention,
-  getBatteryAttentionLevel,
-} from '../../../services/batteryInventoryReview';
+import { getPoolItemAlertDisplay, poolItemNeedsAttention } from '../../../services/alertLeadTime';
 import type { SharedStackParamList } from '../../../shared/navigation/sharedStackTypes';
 import { formatWeightGrams } from '../../../shared/utils/formatWeight';
 import { deleteInventoryPoolItemCascade } from '../../../services/inventoryPoolDelete';
@@ -35,11 +31,6 @@ export function InventoryPoolScreen() {
   const route = useRoute<RouteProp<SharedStackParamList, 'InventoryPool'>>();
   const [sections, setSections] = useState<Section[]>([]);
   const [filterCat, setFilterCat] = useState<FilterMode>('all');
-  const [maintMonths, setMaintMonths] = useState(6);
-
-  useEffect(() => {
-    void SecureSettings.getMaintenanceAlertThresholdMonths().then(setMaintMonths);
-  }, []);
 
   const applyFilter = useCallback(
     (mode: FilterMode) => {
@@ -53,8 +44,6 @@ export function InventoryPoolScreen() {
 
   const load = useCallback(async () => {
     const pools = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
-    const months = await SecureSettings.getMaintenanceAlertThresholdMonths();
-    setMaintMonths(months);
 
     const byCat = POOL_CATEGORY_KEYS.reduce(
       (acc, k) => {
@@ -96,12 +85,12 @@ export function InventoryPoolScreen() {
       return sections
         .map((s) => ({
           ...s,
-          data: s.data.filter((item) => poolItemNeedsBatteryAttention(item, maintMonths)),
+          data: s.data.filter((item) => poolItemNeedsAttention(item)),
         }))
         .filter((s) => s.data.length > 0);
     }
     return sections.filter((s) => s.title === POOL_CATEGORY_LABELS[filterCat]);
-  }, [sections, filterCat, maintMonths]);
+  }, [sections, filterCat]);
 
   const totalPoolItems = useMemo(
     () => sections.reduce((sum, s) => sum + s.data.length, 0),
@@ -133,7 +122,8 @@ export function InventoryPoolScreen() {
     <View style={tacticalStyles.screen}>
       <Text style={styles.intro}>
         Physical warehouse catalog: one list for all pool items. Use + to add an item manually.
-        Category chips and &quot;Needs charge&quot; filter this same list.
+        Alert lead time is set per item on Edit. &quot;Needs attention&quot; filters expiry or maintenance
+        alerts.
       </Text>
       <View style={styles.chipsWrap}>
         <TouchableOpacity
@@ -149,7 +139,7 @@ export function InventoryPoolScreen() {
           activeOpacity={0.85}
         >
           <Text style={[styles.chipText, filterCat === 'needs_charge' && styles.chipTextAlertOn]}>
-            Needs charge
+            Needs attention
           </Text>
         </TouchableOpacity>
         {POOL_CATEGORY_KEYS.map((key) => {
@@ -181,9 +171,8 @@ export function InventoryPoolScreen() {
             <Text style={styles.sectionHeader}>{title}</Text>
           )}
           renderItem={({ item }) => {
-            const level = getBatteryAttentionLevel(item.poolCategory, item.lastChargeAt, maintMonths);
-            const showBatt =
-              level === 'needs_charge' || level === 'upcoming' || level === 'missing_data';
+            const display = getPoolItemAlertDisplay(item);
+            const showBadge = display !== 'ok';
             return (
               <View style={styles.row}>
                 <TouchableOpacity
@@ -193,19 +182,19 @@ export function InventoryPoolScreen() {
                 >
                   <View style={styles.rowTitleRow}>
                     <Text style={styles.rowName}>{item.name}</Text>
-                    {showBatt ? (
+                    {showBadge ? (
                       <Text
                         style={[
                           styles.battBadge,
-                          level === 'needs_charge' || level === 'missing_data'
-                            ? styles.battBadgeRed
-                            : styles.battBadgeOrange,
+                          display === 'warning' ? styles.battBadgeOrange : styles.battBadgeRed,
                         ]}
                         numberOfLines={1}
                       >
-                        {level === 'missing_data' || level === 'needs_charge'
-                          ? 'NEEDS CHARGE'
-                          : 'UPCOMING'}
+                        {display === 'missing_data'
+                          ? 'MISSING'
+                          : display === 'critical'
+                            ? 'DUE'
+                            : 'SOON'}
                       </Text>
                     ) : null}
                   </View>
@@ -230,7 +219,7 @@ export function InventoryPoolScreen() {
               {filterCat === 'all'
                 ? 'No pool items in this view.'
                 : filterCat === 'needs_charge'
-                  ? 'No items past their battery review date.'
+                  ? 'No items in warning or critical state.'
                   : `No items in ${POOL_CATEGORY_LABELS[filterCat as PoolCategory]}. Pick another category or add an item.`}
             </Text>
           }

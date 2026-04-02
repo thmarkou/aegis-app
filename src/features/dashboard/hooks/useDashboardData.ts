@@ -5,19 +5,14 @@ import { Pedometer } from 'expo-sensors';
 import NetInfo from '@react-native-community/netinfo';
 import { Q } from '@nozbe/watermelondb';
 import { database } from '../../../database';
-import type PowerDevice from '../../../database/models/PowerDevice';
 import type KitPackItem from '../../../database/models/KitPackItem';
 import type InventoryPoolItem from '../../../database/models/InventoryPoolItem';
 import type MissionPreset from '../../../database/models/MissionPreset';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { haversineKm, bearingDeg } from '../../../shared/utils/geoUtils';
 import { fetchWeatherForLocation } from '../services/weatherService';
-import { PROACTIVE_EXPIRY_DAYS } from '../../../services/inventoryAprsStatus';
-import { getStalePowerDeviceCount } from '../../../services/powerLogisticsStatus';
-import { poolItemNeedsBatteryAttention } from '../../../services/batteryInventoryReview';
+import { getPoolItemAlertDisplay } from '../../../services/alertLeadTime';
 import { computeKitNutritionTotals } from '../../../services/missionReadiness';
-
-const EXPIRY_WARN_DAYS = 30;
 
 /** 0–100 readiness from active kit vs selected mission preset (calories + water targets). */
 function readinessPercentForActiveKit(
@@ -42,13 +37,12 @@ export function useDashboardData() {
   const [stepsToday, setStepsToday] = useState<number | null>(null);
   const [distWalkedKm, setDistWalkedKm] = useState<number | null>(null);
   const [weather, setWeather] = useState<{ tempC: number; windKmh: number } | null>(null);
-  const [maintenanceExpiringSoon, setMaintenanceExpiringSoon] = useState(0);
-  const [maintenanceStalePower, setMaintenanceStalePower] = useState(0);
-  const [batteryReviewDueCount, setBatteryReviewDueCount] = useState(0);
+  const [alertWarningCount, setAlertWarningCount] = useState(0);
+  const [alertCriticalCount, setAlertCriticalCount] = useState(0);
+  const [alertMissingCount, setAlertMissingCount] = useState(0);
 
   const load = useCallback(async () => {
     const now = Date.now();
-    const warnThreshold = now + EXPIRY_WARN_DAYS * 24 * 60 * 60 * 1000;
 
     const activeKitId = await SecureSettings.getActiveKitId();
     const presetId = await SecureSettings.getSelectedMissionPresetId();
@@ -81,27 +75,20 @@ export function useDashboardData() {
     const batt = await Battery.getBatteryLevelAsync();
     setBatteryPct(Math.round(batt * 100));
 
-    let expCount = 0;
-    const thirtyHorizon = now + PROACTIVE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-    let expiringSoon = 0;
     const poolItems = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
-    const maintMonths = await SecureSettings.getMaintenanceAlertThresholdMonths();
-    let batteryDue = 0;
+    let w = 0;
+    let c = 0;
+    let m = 0;
     for (const item of poolItems) {
-      if (poolItemNeedsBatteryAttention(item, maintMonths, now)) batteryDue++;
+      const d = getPoolItemAlertDisplay(item, now);
+      if (d === 'warning') w++;
+      else if (d === 'critical') c++;
+      else if (d === 'missing_data') m++;
     }
-    setBatteryReviewDueCount(batteryDue);
-    for (const item of poolItems) {
-      if (item.expiryDate) {
-        const exp = item.expiryDate;
-        if (exp <= now) expCount++;
-        else if (exp <= warnThreshold) expCount++;
-        if (exp > now && exp <= thirtyHorizon) expiringSoon++;
-      }
-    }
-    setExpAlerts(expCount);
-    setMaintenanceExpiringSoon(expiringSoon);
-    setMaintenanceStalePower(await getStalePowerDeviceCount());
+    setAlertWarningCount(w);
+    setAlertCriticalCount(c);
+    setAlertMissingCount(m);
+    setExpAlerts(w + c + m);
 
     const waypoints = poolItems.filter(
       (i) => i.isWaypoint && i.latitude != null && i.longitude != null
@@ -123,11 +110,11 @@ export function useDashboardData() {
 
     if (loc && waypoints.length > 0) {
       let nearest: { km: number; bearing: number; name: string } | null = null;
-      for (const w of waypoints) {
-        const km = haversineKm(loc.lat, loc.lon, w.latitude!, w.longitude!);
-        const bearing = bearingDeg(loc.lat, loc.lon, w.latitude!, w.longitude!);
+      for (const wpt of waypoints) {
+        const km = haversineKm(loc.lat, loc.lon, wpt.latitude!, wpt.longitude!);
+        const bearing = bearingDeg(loc.lat, loc.lon, wpt.latitude!, wpt.longitude!);
         if (!nearest || km < nearest.km) {
-          nearest = { km, bearing, name: w.name };
+          nearest = { km, bearing, name: wpt.name };
         }
       }
       setNextWp(nearest);
@@ -137,8 +124,8 @@ export function useDashboardData() {
 
     const netState = await NetInfo.fetch();
     if (netState.isConnected && netState.isInternetReachable && loc) {
-      const w = await fetchWeatherForLocation(loc.lat, loc.lon);
-      setWeather(w);
+      const weatherResult = await fetchWeatherForLocation(loc.lat, loc.lon);
+      setWeather(weatherResult);
     } else {
       setWeather(null);
     }
@@ -170,17 +157,16 @@ export function useDashboardData() {
     return () => sub.remove();
   }, [load]);
 
-  // STALE count updates when charge dates or devices change (Logistics) without leaving Dashboard.
   useEffect(() => {
     const sub = database
-      .get<PowerDevice>('power_devices')
+      .get<InventoryPoolItem>('inventory_pool_items')
       .query()
       .observe()
       .subscribe(() => {
-        void getStalePowerDeviceCount().then(setMaintenanceStalePower);
+        void load();
       });
     return () => sub.unsubscribe();
-  }, []);
+  }, [load]);
 
   return {
     readinessScore,
@@ -193,9 +179,9 @@ export function useDashboardData() {
     stepsToday,
     distWalkedKm,
     weather,
-    maintenanceExpiringSoon,
-    maintenanceStalePower,
-    batteryReviewDueCount,
+    alertWarningCount,
+    alertCriticalCount,
+    alertMissingCount,
     refresh: load,
   };
 }

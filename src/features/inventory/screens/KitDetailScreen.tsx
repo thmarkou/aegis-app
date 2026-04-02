@@ -25,6 +25,7 @@ import type { SharedStackParamList } from '../../../shared/navigation/sharedStac
 import { POOL_CATEGORY_LABELS, type PoolCategory } from '../../../shared/constants/poolCategories';
 import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { formatWeightGrams } from '../../../shared/utils/formatWeight';
+import { formatDateEuFromMs } from '../../../shared/utils/formatDateEu';
 import { useWeightWarning } from '../hooks/useWeightWarning';
 import { BlinkingAmberWarning } from '../components/BlinkingAmberWarning';
 import { BlinkingRedWarning } from '../components/BlinkingRedWarning';
@@ -347,7 +348,7 @@ export function KitDetailScreen() {
                   )}
                   {pool.expiryDate && (
                     <Text style={styles.expiryDateText}>
-                      Exp: {new Date(pool.expiryDate).toISOString().slice(0, 10)}
+                      Exp: {formatDateEuFromMs(pool.expiryDate)}
                     </Text>
                   )}
                 </View>

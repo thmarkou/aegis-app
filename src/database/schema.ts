@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 /** Keep `version` equal to the latest `toVersion` in `migrations.ts`. */
 export default appSchema({
-  version: 19,
+  version: 21,
   tables: [
     tableSchema({
       name: 'kits',
@@ -36,6 +36,8 @@ export default appSchema({
         { name: 'last_charge_at', type: 'number', isOptional: true },
         { name: 'battery_capacity_mah', type: 'number', isOptional: true },
         { name: 'charging_requirements', type: 'string', isOptional: true },
+        { name: 'maintenance_cycle_days', type: 'number', isOptional: true },
+        { name: 'alert_lead_days', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -86,19 +88,6 @@ export default appSchema({
         { name: 'altitude', type: 'number', isOptional: true },
         { name: 'last_seen_at', type: 'number' },
         { name: 'comment', type: 'string', isOptional: true },
-      ],
-    }),
-    tableSchema({
-      name: 'power_devices',
-      columns: [
-        { name: 'slug', type: 'string', isIndexed: true },
-        { name: 'name', type: 'string' },
-        { name: 'last_full_charge_at', type: 'number', isOptional: true },
-        { name: 'battery_type', type: 'string', isOptional: true },
-        { name: 'maintenance_cycle_days', type: 'number', isOptional: true },
-        { name: 'pool_item_id', type: 'string', isOptional: true, isIndexed: true },
-        { name: 'created_at', type: 'number' },
-        { name: 'updated_at', type: 'number' },
       ],
     }),
     tableSchema({
