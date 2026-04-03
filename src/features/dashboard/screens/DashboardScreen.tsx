@@ -10,7 +10,7 @@ import {
   RefreshControl,
   Linking,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { tactical } from '../../../shared/tacticalStyles';
@@ -266,8 +266,11 @@ export function DashboardScreen() {
     alertWarningCount,
     alertCriticalCount,
     alertMissingCount,
+    maintenanceAlerts,
     refresh,
   } = useDashboardData();
+
+  const navigation = useNavigation<{ navigate: (name: string, params?: object) => void }>();
 
   const [sosProgress, setSosProgress] = React.useState(0);
   const sosTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -412,6 +415,58 @@ export function DashboardScreen() {
             .filter(Boolean)
             .join(' · ') || 'No maintenance alerts.'}
         </Text>
+        <Text style={styles.maintenanceSubHint}>
+          Alerts use each item’s Alert lead time (yellow) and 3-day window (red). Tap a row to edit the item.
+        </Text>
+        {maintenanceAlerts.length > 0 ? (
+          <View style={styles.maintenanceList}>
+            {maintenanceAlerts.map((row) => (
+              <Pressable
+                key={row.poolItemId}
+                style={({ pressed }) => [
+                  styles.maintenanceRow,
+                  pressed && styles.maintenanceRowPressed,
+                ]}
+                onPress={() =>
+                  navigation.navigate('Mission', {
+                    screen: 'ItemForm',
+                    params: { poolItemId: row.poolItemId },
+                  })
+                }
+              >
+                <View style={styles.maintenanceRowBadgeWrap}>
+                  <Text
+                    style={[
+                      styles.maintenanceRowBadge,
+                      row.display === 'critical'
+                        ? styles.maintenanceBadgeRed
+                        : row.display === 'warning'
+                          ? styles.maintenanceBadgeOrange
+                          : styles.maintenanceBadgeMissing,
+                    ]}
+                  >
+                    {row.display === 'critical'
+                      ? 'RED'
+                      : row.display === 'warning'
+                        ? 'YEL'
+                        : 'MISS'}
+                  </Text>
+                </View>
+                <View style={styles.maintenanceRowText}>
+                  <Text style={styles.maintenanceRowName} numberOfLines={1}>
+                    {row.name}
+                  </Text>
+                  {row.detailLines.map((line, i) => (
+                    <Text key={i} style={styles.maintenanceRowDetail} numberOfLines={2}>
+                      {line}
+                    </Text>
+                  ))}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={tactical.zinc[500]} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.telemetryGrid}>
@@ -619,6 +674,57 @@ const styles = StyleSheet.create({
   maintenanceBodyAlert: {
     color: '#fdba74',
     fontWeight: '600',
+  },
+  maintenanceSubHint: {
+    color: tactical.zinc[500],
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
+  },
+  maintenanceList: {
+    marginTop: 12,
+    gap: 8,
+  },
+  maintenanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: tactical.zinc[700],
+  },
+  maintenanceRowPressed: {
+    opacity: 0.85,
+    backgroundColor: 'rgba(255, 191, 0, 0.08)',
+  },
+  maintenanceRowBadgeWrap: { width: 40, alignItems: 'center' },
+  maintenanceRowBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 4,
+    overflow: 'hidden',
+    color: tactical.black,
+  },
+  maintenanceBadgeRed: { backgroundColor: 'rgba(239, 68, 68, 0.85)' },
+  maintenanceBadgeOrange: { backgroundColor: 'rgba(249, 115, 22, 0.85)' },
+  maintenanceBadgeMissing: { backgroundColor: 'rgba(234, 179, 8, 0.85)' },
+  maintenanceRowText: { flex: 1, minWidth: 0 },
+  maintenanceRowName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  maintenanceRowDetail: {
+    color: tactical.zinc[500],
+    fontSize: 12,
+    lineHeight: 16,
   },
   maintenanceHint: {
     marginTop: 8,

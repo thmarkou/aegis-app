@@ -498,6 +498,29 @@
 
 ---
 
+## 2026-04-04 (Σάββατο) – Κατηγορία Water, Dashboard MAINTENANCE λίστα, Logistics report
+
+### Κατηγορίες & φόρμα είδους ([`poolCategories.ts`](src/shared/constants/poolCategories.ts), [`ItemFormScreen.tsx`](src/features/inventory/screens/ItemFormScreen.tsx))
+- Νέα κατηγορία **`water`**: πεδίο **λίτρα ανά μονάδα** (μόνο εκεί)· **Consumables** μόνο **Calories** (φαγητά/MRE κ.λπ.) — **χωρίς** water στο consumables.
+- Βοηθητικές: **`poolCategoryShowsCalories`**, **`poolCategoryShowsWaterLitersField`**· legacy mapping: `water` / hydration → `water`, όχι πλέον water → consumables.
+
+### Readiness & λίστες
+- [`missionReadiness.ts`](src/services/missionReadiness.ts): kcal μόνο από **`consumables`**, νερό από γραμμές **`water`**.
+- [`KitDetailScreen`](src/features/inventory/screens/KitDetailScreen.tsx): σύνολο kcal μόνο consumables· εμφάνιση **L** για γραμμές Water.
+- [`InventoryPoolScreen`](src/features/inventory/screens/InventoryPoolScreen.tsx), [`PoolPickerScreen`](src/features/inventory/screens/PoolPickerScreen.tsx): meta `kcal` / `L/unit` ανά κατηγορία.
+
+### Dashboard MAINTENANCE ([`alertLeadTime.ts`](src/services/alertLeadTime.ts), [`useDashboardData.ts`](src/features/dashboard/hooks/useDashboardData.ts), [`DashboardScreen.tsx`](src/features/dashboard/screens/DashboardScreen.tsx))
+- **`listDashboardMaintenanceAlerts`**: λίστα ειδοποιήσεων βάσει Alert lead (expiry + charge/check due)· γραμμές με badge RED/YEL/MISS.
+- **Tap** στο item → **Mission → ItemForm** (`poolItemId`) για ενημέρωση.
+
+### Logistics ([`LogisticsScreen.tsx`](src/features/inventory/screens/LogisticsScreen.tsx))
+- **Read-only** «Logistics report»· αφαίρεση **Charged today**· ενημέρωση φόρτισης/ημερομηνιών μόνο από **Warehouse (Item form)**· **Open in Warehouse**.
+
+### Git
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-04).
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

@@ -3,6 +3,7 @@ import { database } from '../database';
 import type Kit from '../database/models/Kit';
 import type KitPackItem from '../database/models/KitPackItem';
 import type InventoryPoolItem from '../database/models/InventoryPoolItem';
+import { poolCategoryShowsCalories, poolCategoryShowsWaterLitersField } from '../shared/constants/poolCategories';
 import type MissionPreset from '../database/models/MissionPreset';
 
 export type KitNutritionTotals = {
@@ -37,9 +38,12 @@ export async function computeKitNutritionTotals(kitId: string): Promise<KitNutri
   let packedWaterLiters = 0;
   for (const p of packs) {
     const pool: InventoryPoolItem = await p.poolItem.fetch();
-    totalKcal += (pool.calories ?? 0) * p.quantity;
-    const w = pool.waterLitersPerUnit ?? 0;
-    packedWaterLiters += w * p.quantity;
+    if (poolCategoryShowsCalories(pool.poolCategory)) {
+      totalKcal += (pool.calories ?? 0) * p.quantity;
+    }
+    if (poolCategoryShowsWaterLitersField(pool.poolCategory)) {
+      packedWaterLiters += (pool.waterLitersPerUnit ?? 0) * p.quantity;
+    }
   }
 
   return {

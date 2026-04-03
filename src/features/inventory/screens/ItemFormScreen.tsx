@@ -26,7 +26,13 @@ import { tactical, tacticalStyles } from '../../../shared/tacticalStyles';
 import { deleteInventoryPoolItemCascade } from '../../../services/inventoryPoolDelete';
 import { BarcodeScannerModal, type BarcodeScanResult } from '../components/BarcodeScannerModal';
 import { refreshInventoryNotifications } from '../services/refreshInventoryNotifications';
-import { POOL_CATEGORY_KEYS, POOL_CATEGORY_LABELS, type PoolCategory } from '../../../shared/constants/poolCategories';
+import {
+  POOL_CATEGORY_KEYS,
+  POOL_CATEGORY_LABELS,
+  poolCategoryShowsCalories,
+  poolCategoryShowsWaterLitersField,
+  type PoolCategory,
+} from '../../../shared/constants/poolCategories';
 import {
   CRITICAL_WINDOW_DAYS,
   getPoolItemAlertDisplayFromFields,
@@ -114,9 +120,13 @@ export function ItemFormScreen() {
           : ''
     );
     setWeightGrams(String(pool.weightGrams));
-    setCalories(pool.calories != null ? String(pool.calories) : '');
+    setCalories(
+      poolCategoryShowsCalories(cat) && pool.calories != null ? String(pool.calories) : ''
+    );
     setWaterLitersPerUnit(
-      pool.waterLitersPerUnit != null ? String(pool.waterLitersPerUnit) : ''
+      poolCategoryShowsWaterLitersField(cat) && pool.waterLitersPerUnit != null
+        ? String(pool.waterLitersPerUnit)
+        : ''
     );
     setCondition(pool.condition ? pool.condition.charAt(0).toUpperCase() + pool.condition.slice(1) : null);
     setIsEssential(pool.isEssential);
@@ -139,9 +149,16 @@ export function ItemFormScreen() {
   const showQuantity = kitId != null && !isPoolOnlyEdit;
   const showBatterySection = poolCategoryRequiresBattery(poolCategory);
   const showExpirySection = !poolCategoryRequiresBattery(poolCategory);
+  const showCaloriesField = poolCategoryShowsCalories(poolCategory);
+  const showWaterLitersField = poolCategoryShowsWaterLitersField(poolCategory);
 
   useEffect(() => {
     if (poolCategoryRequiresBattery(poolCategory)) setExpiryDate('');
+  }, [poolCategory]);
+
+  useEffect(() => {
+    if (!poolCategoryShowsCalories(poolCategory)) setCalories('');
+    if (!poolCategoryShowsWaterLitersField(poolCategory)) setWaterLitersPerUnit('');
   }, [poolCategory]);
 
   const formAlertPreview = useMemo(() => {
@@ -302,8 +319,14 @@ export function ItemFormScreen() {
     }
     const q = parseFloat(quantity) || 1;
     const w = parseFloat(weightGrams) || 0;
-    const cal = calories.trim() ? parseFloat(calories) : null;
-    const waterPer = waterLitersPerUnit.trim() ? parseFloat(waterLitersPerUnit) : null;
+    const cal =
+      poolCategoryShowsCalories(poolCategory) && calories.trim()
+        ? parseFloat(calories)
+        : null;
+    const waterPer =
+      poolCategoryShowsWaterLitersField(poolCategory) && waterLitersPerUnit.trim()
+        ? parseFloat(waterLitersPerUnit)
+        : null;
     if (!name.trim()) {
       Alert.alert('Error', 'Name is required');
       return;
@@ -752,24 +775,32 @@ export function ItemFormScreen() {
           </View>
         </View>
       )}
-      <Text style={tacticalStyles.label}>Calories (per unit)</Text>
-      <TextInput
-        style={tacticalStyles.input}
-        value={calories}
-        onChangeText={setCalories}
-        keyboardType="decimal-pad"
-        placeholder="Optional"
-        placeholderTextColor="#666"
-      />
-      <Text style={tacticalStyles.label}>Water (L per unit)</Text>
-      <TextInput
-        style={tacticalStyles.input}
-        value={waterLitersPerUnit}
-        onChangeText={setWaterLitersPerUnit}
-        keyboardType="decimal-pad"
-        placeholder="e.g. 1 for a 1L bottle"
-        placeholderTextColor="#666"
-      />
+      {showCaloriesField ? (
+        <>
+          <Text style={tacticalStyles.label}>Calories (per unit)</Text>
+          <TextInput
+            style={tacticalStyles.input}
+            value={calories}
+            onChangeText={setCalories}
+            keyboardType="decimal-pad"
+            placeholder="Optional — food, MRE, cans"
+            placeholderTextColor="#666"
+          />
+        </>
+      ) : null}
+      {showWaterLitersField ? (
+        <>
+          <Text style={tacticalStyles.label}>Liters (per unit)</Text>
+          <TextInput
+            style={tacticalStyles.input}
+            value={waterLitersPerUnit}
+            onChangeText={setWaterLitersPerUnit}
+            keyboardType="decimal-pad"
+            placeholder="e.g. 1 for a 1 L bottle"
+            placeholderTextColor="#666"
+          />
+        </>
+      ) : null}
       <Text style={tacticalStyles.label}>Condition</Text>
       <View style={tacticalStyles.row}>
         {CONDITIONS.map((c) => (

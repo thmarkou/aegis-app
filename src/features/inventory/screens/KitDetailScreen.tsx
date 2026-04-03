@@ -177,10 +177,10 @@ export function KitDetailScreen() {
   const waterWeightKg = waterLiters * KG_PER_LITER;
   const totalWeightGrams = itemsWeightGrams + waterWeightKg * 1000;
   const totalKg = totalWeightGrams / 1000;
-  const totalCalories = lines.reduce(
-    (sum, { pack, pool }) => sum + (pool.calories ?? 0) * pack.quantity,
-    0
-  );
+  const totalCalories = lines.reduce((sum, { pack, pool }) => {
+    if (pool.poolCategory !== 'consumables') return sum;
+    return sum + (pool.calories ?? 0) * pack.quantity;
+  }, 0);
 
   const limitKg =
     bodyWeightKg != null && bodyWeightKg > 0 ? bodyWeightKg * (weightPercent / 100) : null;
@@ -286,7 +286,14 @@ export function KitDetailScreen() {
           const { pack, pool } = line;
           const showExpiryWarn = isExpiredOrExpiringSoon(pool.expiryDate);
           const expiryStatus = getExpiryStatus(pool.expiryDate);
-          const itemCal = pool.calories != null ? pack.quantity * pool.calories : 0;
+          const itemCal =
+            pool.poolCategory === 'consumables' && pool.calories != null
+              ? pack.quantity * pool.calories
+              : 0;
+          const itemWaterL =
+            pool.poolCategory === 'water' && pool.waterLitersPerUnit != null
+              ? pack.quantity * pool.waterLitersPerUnit
+              : 0;
           const isHighlighted = highlightedPackItemId === pack.id;
           const catKey = pool.poolCategory as PoolCategory;
           const catLabel = POOL_CATEGORY_LABELS[catKey] ?? pool.poolCategory;
@@ -312,6 +319,7 @@ export function KitDetailScreen() {
                   <Text style={styles.itemMeta}>
                     {pack.quantity} {pool.unit} · {formatWeightGrams(pool.weightGrams)} g / unit
                     {itemCal > 0 && ` · ${Math.round(itemCal)} kcal`}
+                    {itemWaterL > 0 && ` · ${itemWaterL.toFixed(1)} L`}
                   </Text>
                 </View>
                 <View style={styles.itemTagsRow}>

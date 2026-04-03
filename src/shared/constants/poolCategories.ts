@@ -4,6 +4,7 @@
 export const POOL_CATEGORY_KEYS = [
   'tools',
   'consumables',
+  'water',
   'medical',
   'shelter_clothing',
   'comms_nav',
@@ -19,6 +20,7 @@ export type PoolCategory = (typeof POOL_CATEGORY_KEYS)[number];
 export const POOL_CATEGORY_LABELS: Record<PoolCategory, string> = {
   tools: 'Tools',
   consumables: 'Consumables',
+  water: 'Water',
   medical: 'Medical',
   shelter_clothing: 'Shelter / Clothing',
   comms_nav: 'Comms / Nav',
@@ -39,10 +41,21 @@ export const BATTERY_POOL_CATEGORY_KEYS: readonly PoolCategory[] = [
   'power',
 ];
 
+/** Calories (per unit) — only Consumables (food, MRE, cans). */
+export function poolCategoryShowsCalories(category: string): boolean {
+  return category === 'consumables';
+}
+
+/** Liters per unit — only Water category (bottles, jerrycans, etc.). */
+export function poolCategoryShowsWaterLitersField(category: string): boolean {
+  return category === 'water';
+}
+
 /** Map legacy free-text categories (templates, old DB) to pool keys. */
 export function mapLegacyCategoryToPoolCategory(legacy: string): PoolCategory {
   const c = legacy.trim().toLowerCase();
-  if (c === 'food' || c === 'water' || c === 'mre' || c.includes('ration')) return 'consumables';
+  if (c === 'water' || c.includes('water bottle') || c === 'jerry' || c === 'hydration') return 'water';
+  if (c === 'food' || c === 'mre' || c.includes('ration')) return 'consumables';
   if (c === 'medical') return 'medical';
   if (c === 'radio' || c === 'communication') return 'comms_nav';
   if (c === 'vehicle' || c === 'base camp' || c === 'shelter') return 'shelter_clothing';

@@ -128,6 +128,72 @@ export function getPoolItemAlertDisplay(
   return getCombinedPoolItemSeverity(item, nowMs);
 }
 
+/** Rows for Dashboard MAINTENANCE (expiry + maintenance dates, Alert lead rules). */
+export type DashboardMaintenanceAlert = {
+  poolItemId: string;
+  name: string;
+  display: PoolAlertDisplay;
+  detailLines: string[];
+};
+
+function dashboardAlertSortRank(d: PoolAlertDisplay): number {
+  if (d === 'critical') return 0;
+  if (d === 'missing_data') return 1;
+  if (d === 'warning') return 2;
+  return 99;
+}
+
+export function listDashboardMaintenanceAlerts(
+  items: InventoryPoolItem[],
+  nowMs: number = Date.now()
+): DashboardMaintenanceAlert[] {
+  const out: DashboardMaintenanceAlert[] = [];
+  for (const item of items) {
+    const display = getPoolItemAlertDisplay(item, nowMs);
+    if (display === 'ok') continue;
+
+    const detailLines: string[] = [];
+    if (display === 'missing_data') {
+      detailLines.push('Battery category: set type and last charge');
+    } else {
+      const lead = item.alertLeadDays;
+      if (!categoryNeedsBattery(item.poolCategory) && item.expiryDate != null) {
+        const sev = severityForDeadline(nowMs, getExpiryDeadlineMs(item.expiryDate), lead);
+        if (sev !== 'ok') {
+          detailLines.push(`Expiry ${formatDateEuFromMs(item.expiryDate)}`);
+        }
+      }
+      if (categoryNeedsBattery(item.poolCategory)) {
+        const hasBatt = !!(item.batteryType && item.batteryType.trim());
+        if (hasBatt && item.lastChargeAt != null) {
+          const m = getMaintenanceDeadlineMs(item.lastChargeAt, item.maintenanceCycleDays);
+          if (m != null) {
+            const sev = severityForDeadline(nowMs, m, lead);
+            if (sev !== 'ok') {
+              detailLines.push(`Charge / check due ${formatDateEuFromMs(m)}`);
+            }
+          }
+        }
+      }
+    }
+
+    out.push({
+      poolItemId: item.id,
+      name: item.name,
+      display,
+      detailLines: detailLines.length > 0 ? detailLines : ['Review in Warehouse'],
+    });
+  }
+
+  out.sort((a, b) => {
+    const ra = dashboardAlertSortRank(a.display);
+    const rb = dashboardAlertSortRank(b.display);
+    if (ra !== rb) return ra - rb;
+    return a.name.localeCompare(b.name);
+  });
+  return out;
+}
+
 export function poolItemNeedsAttention(item: InventoryPoolItem, nowMs: number = Date.now()): boolean {
   return getPoolItemAlertDisplay(item, nowMs) !== 'ok';
 }

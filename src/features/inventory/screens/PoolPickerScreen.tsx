@@ -101,7 +101,12 @@ export function PoolPickerScreen() {
               <Text style={styles.rowName}>{item.name}</Text>
               <Text style={styles.rowMeta}>
                 {formatWeightGrams(item.weightGrams)} g / unit
-                {item.calories != null ? ` · ${item.calories} kcal/unit` : ''}
+                {item.poolCategory === 'consumables' && item.calories != null
+                  ? ` · ${item.calories} kcal/unit`
+                  : ''}
+                {item.poolCategory === 'water' && item.waterLitersPerUnit != null
+                  ? ` · ${item.waterLitersPerUnit} L/unit`
+                  : ''}
               </Text>
             </View>
             <Text style={styles.addHint}>+</Text>

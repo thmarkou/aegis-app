@@ -200,7 +200,12 @@ export function InventoryPoolScreen() {
                   </View>
                   <Text style={styles.rowMeta}>
                     {formatWeightGrams(item.weightGrams)} g / unit
-                    {item.calories != null ? ` · ${item.calories} kcal` : ''}
+                    {item.poolCategory === 'consumables' && item.calories != null
+                      ? ` · ${item.calories} kcal`
+                      : ''}
+                    {item.poolCategory === 'water' && item.waterLitersPerUnit != null
+                      ? ` · ${item.waterLitersPerUnit} L/unit`
+                      : ''}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity

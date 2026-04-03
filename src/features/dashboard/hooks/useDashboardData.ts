@@ -11,7 +11,11 @@ import type MissionPreset from '../../../database/models/MissionPreset';
 import * as SecureSettings from '../../../shared/services/secureSettings';
 import { haversineKm, bearingDeg } from '../../../shared/utils/geoUtils';
 import { fetchWeatherForLocation } from '../services/weatherService';
-import { getPoolItemAlertDisplay } from '../../../services/alertLeadTime';
+import {
+  getPoolItemAlertDisplay,
+  listDashboardMaintenanceAlerts,
+  type DashboardMaintenanceAlert,
+} from '../../../services/alertLeadTime';
 import { computeKitNutritionTotals } from '../../../services/missionReadiness';
 
 /** 0–100 readiness from active kit vs selected mission preset (calories + water targets). */
@@ -40,6 +44,7 @@ export function useDashboardData() {
   const [alertWarningCount, setAlertWarningCount] = useState(0);
   const [alertCriticalCount, setAlertCriticalCount] = useState(0);
   const [alertMissingCount, setAlertMissingCount] = useState(0);
+  const [maintenanceAlerts, setMaintenanceAlerts] = useState<DashboardMaintenanceAlert[]>([]);
 
   const load = useCallback(async () => {
     const now = Date.now();
@@ -89,6 +94,7 @@ export function useDashboardData() {
     setAlertCriticalCount(c);
     setAlertMissingCount(m);
     setExpAlerts(w + c + m);
+    setMaintenanceAlerts(listDashboardMaintenanceAlerts(poolItems, now));
 
     const waypoints = poolItems.filter(
       (i) => i.isWaypoint && i.latitude != null && i.longitude != null
@@ -182,6 +188,7 @@ export function useDashboardData() {
     alertWarningCount,
     alertCriticalCount,
     alertMissingCount,
+    maintenanceAlerts,
     refresh: load,
   };
 }

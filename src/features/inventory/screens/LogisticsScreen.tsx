@@ -1,6 +1,6 @@
 /**
- * Logistics — quick charge logging for warehouse rows that have a battery type set.
- * Alert colors and countdowns use per-item `alert_lead_days` + maintenance cycle.
+ * Logistics — read-only report of battery-tracked warehouse rows (Alert lead + maintenance cycle).
+ * Update last charge / dates in Warehouse (Item form), not here.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
@@ -15,7 +15,6 @@ import {
   severityForDeadline,
   type AlertSeverity,
 } from '../../../services/alertLeadTime';
-import { markPoolItemChargedNow } from '../../../services/logisticsCharge';
 import type { MissionStackParamList } from '../../../shared/navigation/MissionStack';
 import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
 import { DEFAULT_MAINTENANCE_CYCLE_DAYS } from '../../../services/powerLogisticsStatus';
@@ -53,7 +52,7 @@ export function LogisticsScreen() {
 
   const emptyHint = useMemo(
     () =>
-      'No battery-tracked items yet. In Warehouse, add or edit an item, set Battery type, maintenance cycle, and Alert lead time — it will appear here for quick “Charged today” logging.',
+      'No battery-tracked items yet. In Warehouse, add or edit an item: set Battery type, maintenance cycle, last charge, and Alert lead time.',
     []
   );
 
@@ -64,10 +63,10 @@ export function LogisticsScreen() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Text style={styles.title}>Power & Devices</Text>
+        <Text style={styles.title}>Logistics report</Text>
         <Text style={styles.desc}>
-          Countdown uses your Alert lead time (days) from each warehouse item. Yellow = in the lead window
-          before the due date; red = due or overdue.
+          Read-only status for power / battery rows. Countdowns use each item’s Alert lead time (yellow) and
+          3-day window (red). To log a charge or change dates, open the item in Warehouse.
         </Text>
 
         {rows.length === 0 ? <Text style={styles.empty}>{emptyHint}</Text> : null}
@@ -101,26 +100,16 @@ export function LogisticsScreen() {
                 </View>
               </View>
               <Text style={styles.meta}>
-                Last full charge:{' '}
-                {lastMs != null ? formatDateEuFromMs(lastMs) : 'Not set'}
+                Last full charge: {lastMs != null ? formatDateEuFromMs(lastMs) : 'Not set'}
               </Text>
               <Text style={styles.countdownLine}>{countdown}</Text>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.btnSecondary}
-                  onPress={() => void markPoolItemChargedNow(item.id)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.btnSecondaryText}>Charged today</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.btnGhost}
-                  onPress={() => navigation.navigate('ItemForm', { poolItemId: item.id })}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.btnGhostText}>Edit in Warehouse</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={styles.btnGhost}
+                onPress={() => navigation.navigate('ItemForm', { poolItemId: item.id })}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.btnGhostText}>Open in Warehouse →</Text>
+              </TouchableOpacity>
             </View>
           );
         })}
@@ -167,19 +156,10 @@ const styles = StyleSheet.create({
   badgeText: { color: tactical.amber, fontSize: 11, fontWeight: '800' },
   meta: { color: tactical.amber, fontSize: 14, marginBottom: 6 },
   countdownLine: { color: tactical.zinc[400], fontSize: 12, lineHeight: 17, marginBottom: 12 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  btnSecondary: {
-    borderWidth: 1,
-    borderColor: tactical.amber,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    backgroundColor: tactical.amber,
-  },
-  btnSecondaryText: { color: tactical.black, fontWeight: '700', fontSize: 13 },
   btnGhost: {
+    alignSelf: 'flex-start',
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 4,
     borderRadius: 8,
   },
   btnGhostText: { color: tactical.amber, fontWeight: '700', fontSize: 13 },
