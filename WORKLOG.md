@@ -517,7 +517,7 @@
 - **Read-only** «Logistics report»· αφαίρεση **Charged today**· ενημέρωση φόρτισης/ημερομηνιών μόνο από **Warehouse (Item form)**· **Open in Warehouse**.
 
 ### Git
-- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-04).
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, `8e1b1ec`, 2026-04-04).
 
 ---
 
