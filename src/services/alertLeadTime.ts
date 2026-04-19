@@ -2,8 +2,11 @@
  * User-defined alert lead (days before deadline) for expiry and maintenance — no hardcoded windows.
  */
 import type InventoryPoolItem from '../database/models/InventoryPoolItem';
-import { BATTERY_POOL_CATEGORY_KEYS } from '../shared/constants/poolCategories';
-import { formatDateEuFromMs } from '../shared/utils/formatDateEu';
+import {
+  BATTERY_POOL_CATEGORY_KEYS,
+  poolCategoryShowsExpiryAndAlertLead,
+} from '../shared/constants/poolCategories';
+import { formatDateEuFromMs, formatDateUsMdYFromMs } from '../shared/utils/formatDateEu';
 import { DEFAULT_MAINTENANCE_CYCLE_DAYS } from './powerLogisticsStatus';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -70,7 +73,11 @@ export function getPoolItemNotificationDeadlines(item: InventoryPoolItem): Array
   kind: 'expiry' | 'maintenance';
 }> {
   const out: Array<{ deadlineMs: number; kind: 'expiry' | 'maintenance' }> = [];
-  if (!categoryNeedsBattery(item.poolCategory) && item.expiryDate != null) {
+  if (
+    !categoryNeedsBattery(item.poolCategory) &&
+    poolCategoryShowsExpiryAndAlertLead(item.poolCategory) &&
+    item.expiryDate != null
+  ) {
     out.push({ deadlineMs: getExpiryDeadlineMs(item.expiryDate), kind: 'expiry' });
   }
   if (categoryNeedsBattery(item.poolCategory)) {
@@ -91,7 +98,11 @@ export function getCombinedPoolItemSeverity(
   const lead = item.alertLeadDays;
   let worst: AlertSeverity = 'ok';
 
-  if (!categoryNeedsBattery(item.poolCategory) && item.expiryDate != null) {
+  if (
+    !categoryNeedsBattery(item.poolCategory) &&
+    poolCategoryShowsExpiryAndAlertLead(item.poolCategory) &&
+    item.expiryDate != null
+  ) {
     worst = maxSeverity(
       worst,
       severityForDeadline(nowMs, getExpiryDeadlineMs(item.expiryDate), lead)
@@ -157,7 +168,11 @@ export function listDashboardMaintenanceAlerts(
       detailLines.push('Battery category: set type and last charge');
     } else {
       const lead = item.alertLeadDays;
-      if (!categoryNeedsBattery(item.poolCategory) && item.expiryDate != null) {
+      if (
+        !categoryNeedsBattery(item.poolCategory) &&
+        poolCategoryShowsExpiryAndAlertLead(item.poolCategory) &&
+        item.expiryDate != null
+      ) {
         const sev = severityForDeadline(nowMs, getExpiryDeadlineMs(item.expiryDate), lead);
         if (sev !== 'ok') {
           detailLines.push(`Expiry ${formatDateEuFromMs(item.expiryDate)}`);
@@ -170,7 +185,7 @@ export function listDashboardMaintenanceAlerts(
           if (m != null) {
             const sev = severityForDeadline(nowMs, m, lead);
             if (sev !== 'ok') {
-              detailLines.push(`Charge / check due ${formatDateEuFromMs(m)}`);
+              detailLines.push(`Charge / check due ${formatDateUsMdYFromMs(m)}`);
             }
           }
         }
@@ -218,7 +233,11 @@ export function getPoolItemAlertDisplayFromFields(
   }
   const lead = f.alertLeadDays;
   let worst: AlertSeverity = 'ok';
-  if (!categoryNeedsBattery(f.poolCategory) && f.expiryDateMs != null) {
+  if (
+    !categoryNeedsBattery(f.poolCategory) &&
+    poolCategoryShowsExpiryAndAlertLead(f.poolCategory) &&
+    f.expiryDateMs != null
+  ) {
     worst = maxSeverity(worst, severityForDeadline(nowMs, getExpiryDeadlineMs(f.expiryDateMs), lead));
   }
   if (categoryNeedsBattery(f.poolCategory) && f.lastChargeAt != null) {
@@ -240,7 +259,7 @@ export function formatMaintenanceDueDate(
 ): string {
   const d = getMaintenanceDeadlineMs(lastChargeMs, cycleDays);
   if (d == null) return '—';
-  return formatDateEuFromMs(d);
+  return formatDateUsMdYFromMs(d);
 }
 
 /** Logistics row: maintenance countdown using item lead days. */

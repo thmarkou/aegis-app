@@ -18,7 +18,7 @@ import {
 import type { MissionStackParamList } from '../../../shared/navigation/MissionStack';
 import type { InventoryStackParamList } from '../../../shared/navigation/InventoryStack';
 import { DEFAULT_MAINTENANCE_CYCLE_DAYS } from '../../../services/powerLogisticsStatus';
-import { formatDateEuFromMs } from '../../../shared/utils/formatDateEu';
+import { formatDateUsMdYFromMs } from '../../../shared/utils/formatDateEu';
 
 function isBatteryTracked(item: InventoryPoolItem): boolean {
   return !!(item.batteryType && item.batteryType.trim());
@@ -100,7 +100,7 @@ export function LogisticsScreen() {
                 </View>
               </View>
               <Text style={styles.meta}>
-                Last full charge: {lastMs != null ? formatDateEuFromMs(lastMs) : 'Not set'}
+                Last full charge: {lastMs != null ? formatDateUsMdYFromMs(lastMs) : 'Not set'}
               </Text>
               <Text style={styles.countdownLine}>{countdown}</Text>
               <TouchableOpacity

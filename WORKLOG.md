@@ -521,6 +521,23 @@
 
 ---
 
+## 2026-04-19 (Κυριακή) – CSV import iOS, battery ημερομηνίες, chips ανά κατηγορία
+
+### Warehouse CSV import ([`InventoryPoolScreen.tsx`](src/features/inventory/screens/InventoryPoolScreen.tsx), [`poolCsvImport.ts`](src/features/inventory/services/poolCsvImport.ts))
+- iOS: ανάγνωση αρχείου μετά το Document Picker — πρώτα UTF-8, fallback Base64 + `TextDecoder` (χωρίς `atob` στο Hermes)· αποφυγή λανθασμένου «not readable» από μη-UTF8 ή περιορισμούς native read.
+- Battery στήλη **`last_charge_date`**: εισαγωγή μόνο **`YYYY-MM-DD`** (`parseIsoYmdToMs`)· templates CSV/XLSX και README ενημερωμένα.
+
+### Εμφάνιση ημερομηνίας battery ([`formatDateEu.ts`](src/shared/utils/formatDateEu.ts), [`ItemFormScreen.tsx`](src/features/inventory/screens/ItemFormScreen.tsx), [`LogisticsScreen.tsx`](src/features/inventory/screens/LogisticsScreen.tsx), [`alertLeadTime.ts`](src/services/alertLeadTime.ts))
+- Τελευταία φόρτιση / σχετικές προθεσμίες στο UI ως **`MM-DD-YYYY`** (`formatDateUsMdYFromMs`, `parseUsMdYToMs`).
+
+### Inventory Pool — φίλτρα κατηγορίας
+- Chips **`(σε kits / σύνολο)`**: distinct pool items που εμφανίζονται σε τουλάχιστον ένα **`kit_pack_items`** vs σύνολο ανά κατηγορία· **`All`** και **`Needs attention (n)`** με αντίστοιχους μετρητές.
+
+### Git
+- Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-19).
+
+---
+
 ## Template για νέες ημέρες
 
 ```markdown

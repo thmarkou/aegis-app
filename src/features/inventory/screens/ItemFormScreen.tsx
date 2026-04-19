@@ -30,6 +30,7 @@ import {
   POOL_CATEGORY_KEYS,
   POOL_CATEGORY_LABELS,
   poolCategoryShowsCalories,
+  poolCategoryShowsExpiryAndAlertLead,
   poolCategoryShowsWaterLitersField,
   type PoolCategory,
 } from '../../../shared/constants/poolCategories';
@@ -44,8 +45,11 @@ import {
 } from '../../../services/batteryInventoryReview';
 import {
   formatDateEuFromMs,
+  formatDateUsMdYFromMs,
   parseFlexibleDateToMs,
+  parseUsMdYToMs,
   dateForPickerFromStored,
+  dateForPickerFromUsMdY,
 } from '../../../shared/utils/formatDateEu';
 
 const CONDITIONS = ['New', 'Used'] as const;
@@ -81,7 +85,7 @@ export function ItemFormScreen() {
   const [batteryTypeModalVisible, setBatteryTypeModalVisible] = useState(false);
   const [showLastChargePicker, setShowLastChargePicker] = useState(false);
   const [maintenanceCycleDays, setMaintenanceCycleDays] = useState('90');
-  const [alertLeadDaysStr, setAlertLeadDaysStr] = useState('14');
+  const [alertLeadDaysStr, setAlertLeadDaysStr] = useState('');
 
   /** New rows: always create a Global Inventory Pool row; optionally link to kit via pack line. */
   const isNewItem = poolItemId == null && packItemId == null;
@@ -113,11 +117,9 @@ export function ItemFormScreen() {
     setPoolCategory(cat);
     setUnit(pool.unit);
     setExpiryDate(
-      poolCategoryRequiresBattery(cat)
-        ? ''
-        : pool.expiryDate
-          ? formatDateEuFromMs(pool.expiryDate)
-          : ''
+      poolCategoryShowsExpiryAndAlertLead(cat) && pool.expiryDate != null
+        ? formatDateEuFromMs(pool.expiryDate)
+        : ''
     );
     setWeightGrams(String(pool.weightGrams));
     setCalories(
@@ -136,24 +138,47 @@ export function ItemFormScreen() {
     setBarcode(pool.barcode ?? null);
     setIsWaypoint(pool.isWaypoint);
     setBatteryType(pool.batteryType ?? '');
-    setLastChargeDate(pool.lastChargeAt != null ? formatDateEuFromMs(pool.lastChargeAt) : '');
+    setLastChargeDate(pool.lastChargeAt != null ? formatDateUsMdYFromMs(pool.lastChargeAt) : '');
     setBatteryCapacityMah(pool.batteryCapacityMah != null ? String(pool.batteryCapacityMah) : '');
     setChargingRequirements(pool.chargingRequirements ?? '');
     setMaintenanceCycleDays(
       pool.maintenanceCycleDays != null ? String(pool.maintenanceCycleDays) : '90'
     );
-    setAlertLeadDaysStr(pool.alertLeadDays != null ? String(pool.alertLeadDays) : '14');
+    setAlertLeadDaysStr(
+      poolCategoryRequiresBattery(cat) || poolCategoryShowsExpiryAndAlertLead(cat)
+        ? pool.alertLeadDays != null
+          ? String(pool.alertLeadDays)
+          : '14'
+        : ''
+    );
   }
 
   const hasLocation = latitude != null && longitude != null;
   const showQuantity = kitId != null && !isPoolOnlyEdit;
   const showBatterySection = poolCategoryRequiresBattery(poolCategory);
-  const showExpirySection = !poolCategoryRequiresBattery(poolCategory);
+  const showExpiryAndAlertLeadSection = poolCategoryShowsExpiryAndAlertLead(poolCategory);
+  const showExpirySection = showExpiryAndAlertLeadSection;
+  const showAlertLeadSection =
+    poolCategoryRequiresBattery(poolCategory) || showExpiryAndAlertLeadSection;
   const showCaloriesField = poolCategoryShowsCalories(poolCategory);
   const showWaterLitersField = poolCategoryShowsWaterLitersField(poolCategory);
 
   useEffect(() => {
-    if (poolCategoryRequiresBattery(poolCategory)) setExpiryDate('');
+    if (poolCategoryRequiresBattery(poolCategory) || !poolCategoryShowsExpiryAndAlertLead(poolCategory)) {
+      setExpiryDate('');
+    }
+    if (!poolCategoryRequiresBattery(poolCategory) && !poolCategoryShowsExpiryAndAlertLead(poolCategory)) {
+      setAlertLeadDaysStr('');
+    }
+  }, [poolCategory]);
+
+  useEffect(() => {
+    if (
+      (poolCategoryShowsExpiryAndAlertLead(poolCategory) || poolCategoryRequiresBattery(poolCategory)) &&
+      !alertLeadDaysStr.trim()
+    ) {
+      setAlertLeadDaysStr('14');
+    }
   }, [poolCategory]);
 
   useEffect(() => {
@@ -163,7 +188,7 @@ export function ItemFormScreen() {
 
   const formAlertPreview = useMemo(() => {
     const expiryMs = expiryDate.trim() ? parseFlexibleDateToMs(expiryDate.trim()) : null;
-    const lastMs = lastChargeDate.trim() ? parseFlexibleDateToMs(lastChargeDate.trim()) : null;
+    const lastMs = lastChargeDate.trim() ? parseUsMdYToMs(lastChargeDate.trim()) : null;
     const cycleParsed = parseInt(maintenanceCycleDays.trim(), 10);
     const leadParsed =
       alertLeadDaysStr.trim() === '' ? null : parseInt(alertLeadDaysStr.trim(), 10);
@@ -188,7 +213,7 @@ export function ItemFormScreen() {
   ]);
 
   const maintenanceDueLabel = useMemo(() => {
-    const lastMs = lastChargeDate.trim() ? parseFlexibleDateToMs(lastChargeDate.trim()) : null;
+    const lastMs = lastChargeDate.trim() ? parseUsMdYToMs(lastChargeDate.trim()) : null;
     const cycleParsed = parseInt(maintenanceCycleDays.trim(), 10);
     return formatMaintenanceDueDate(lastMs, !isNaN(cycleParsed) ? cycleParsed : null);
   }, [lastChargeDate, maintenanceCycleDays]);
@@ -339,9 +364,9 @@ export function ItemFormScreen() {
         );
         return;
       }
-      const lastMs = parseFlexibleDateToMs(lastChargeDate.trim());
+      const lastMs = parseUsMdYToMs(lastChargeDate.trim());
       if (lastMs == null) {
-        Alert.alert('Error', 'Invalid last charge date. Use DD-MM-YYYY.');
+        Alert.alert('Error', 'Invalid last charge date. Use MM-DD-YYYY.');
         return;
       }
       const cycle = parseInt(maintenanceCycleDays.trim(), 10);
@@ -351,20 +376,33 @@ export function ItemFormScreen() {
       }
     }
     const expiry =
-      poolCategoryRequiresBattery(poolCategory)
+      poolCategoryRequiresBattery(poolCategory) || !poolCategoryShowsExpiryAndAlertLead(poolCategory)
         ? null
         : expiryDate.trim()
           ? parseFlexibleDateToMs(expiryDate.trim())
           : null;
-    if (!poolCategoryRequiresBattery(poolCategory) && expiryDate.trim() && expiry == null) {
+    if (
+      poolCategoryShowsExpiryAndAlertLead(poolCategory) &&
+      expiryDate.trim() &&
+      expiry == null
+    ) {
       Alert.alert('Error', 'Invalid expiry date. Use DD-MM-YYYY.');
       return;
     }
 
-    const leadParsed = parseInt(alertLeadDaysStr.trim(), 10);
-    if (alertLeadDaysStr.trim() === '' || isNaN(leadParsed) || leadParsed < 1 || leadParsed > 3650) {
-      Alert.alert('Error', 'Alert lead time is required (1–3650 days before a deadline for yellow alerts).');
-      return;
+    const needsAlertLead =
+      poolCategoryRequiresBattery(poolCategory) || poolCategoryShowsExpiryAndAlertLead(poolCategory);
+    let leadForSave: number | null = null;
+    if (needsAlertLead) {
+      const leadParsed = parseInt(alertLeadDaysStr.trim(), 10);
+      if (alertLeadDaysStr.trim() === '' || isNaN(leadParsed) || leadParsed < 1 || leadParsed > 3650) {
+        Alert.alert(
+          'Error',
+          'Alert lead time is required (1–3650 days before a deadline for yellow alerts).'
+        );
+        return;
+      }
+      leadForSave = leadParsed;
     }
 
     const cycleDaysParsed = poolCategoryRequiresBattery(poolCategory)
@@ -374,7 +412,7 @@ export function ItemFormScreen() {
     const battFields = poolCategoryRequiresBattery(poolCategory)
       ? {
           batteryType: batteryType.trim() || null,
-          lastChargeAt: parseFlexibleDateToMs(lastChargeDate.trim())!,
+          lastChargeAt: parseUsMdYToMs(lastChargeDate.trim())!,
           batteryCapacityMah: (() => {
             const t = batteryCapacityMah.trim().replace(',', '.');
             if (!t) return null;
@@ -417,7 +455,7 @@ export function ItemFormScreen() {
           r.batteryCapacityMah = battFields.batteryCapacityMah;
           r.chargingRequirements = battFields.chargingRequirements;
           r.maintenanceCycleDays = battFields.maintenanceCycleDays;
-          r.alertLeadDays = leadParsed;
+          r.alertLeadDays = leadForSave;
           r.updatedAt = new Date();
         });
       };
@@ -454,7 +492,7 @@ export function ItemFormScreen() {
           r.batteryCapacityMah = battFields.batteryCapacityMah;
           r.chargingRequirements = battFields.chargingRequirements;
           r.maintenanceCycleDays = battFields.maintenanceCycleDays;
-          r.alertLeadDays = leadParsed;
+          r.alertLeadDays = leadForSave;
           r.createdAt = new Date();
           r.updatedAt = new Date();
         });
@@ -588,20 +626,24 @@ export function ItemFormScreen() {
           )}
         </>
       ) : null}
-      <Text style={tacticalStyles.label}>Alert Lead Time (Days) *</Text>
-      <Text style={styles.fieldHintMuted}>
-        Required. Days before an expiry or maintenance deadline for a yellow warning. Red alerts start{' '}
-        {CRITICAL_WINDOW_DAYS} days before the deadline (and when overdue).
-      </Text>
-      <TextInput
-        style={tacticalStyles.input}
-        value={alertLeadDaysStr}
-        onChangeText={(t) => setAlertLeadDaysStr(t.replace(/[^0-9]/g, ''))}
-        placeholder="e.g. 14"
-        placeholderTextColor="#666"
-        keyboardType="number-pad"
-      />
-      {formAlertPreview !== 'ok' ? (
+      {showAlertLeadSection ? (
+        <>
+          <Text style={tacticalStyles.label}>Alert Lead Time (Days) *</Text>
+          <Text style={styles.fieldHintMuted}>
+            Required. Days before an expiry or maintenance deadline for a yellow warning. Red alerts
+            start {CRITICAL_WINDOW_DAYS} days before the deadline (and when overdue).
+          </Text>
+          <TextInput
+            style={tacticalStyles.input}
+            value={alertLeadDaysStr}
+            onChangeText={(t) => setAlertLeadDaysStr(t.replace(/[^0-9]/g, ''))}
+            placeholder="e.g. 14"
+            placeholderTextColor="#666"
+            keyboardType="number-pad"
+          />
+        </>
+      ) : null}
+      {showAlertLeadSection && formAlertPreview !== 'ok' ? (
         <Text
           style={
             formAlertPreview === 'warning' ? styles.alertBannerOrange : styles.alertBannerRed
@@ -618,7 +660,7 @@ export function ItemFormScreen() {
         <View style={styles.batterySection}>
           <Text style={styles.batterySectionTitle}>Battery & Charging Management</Text>
           <Text style={styles.batterySectionHint}>
-            Maintenance cycle is in days. Next due date uses last charge + cycle (DD-MM-YYYY above).
+            Maintenance cycle is in days. Next due date uses last charge + cycle (MM-DD-YYYY above).
           </Text>
           <Text style={tacticalStyles.label}>Battery type *</Text>
           <TouchableOpacity
@@ -637,18 +679,18 @@ export function ItemFormScreen() {
             activeOpacity={0.85}
           >
             <Text style={lastChargeDate ? styles.dropdownText : styles.dropdownPlaceholder}>
-              {lastChargeDate || 'DD-MM-YYYY · tap to select'}
+              {lastChargeDate || 'MM-DD-YYYY · tap to select'}
             </Text>
           </TouchableOpacity>
           {showLastChargePicker && (
             <View style={styles.datePickerWrap}>
               <DateTimePicker
-                value={lastChargeDate ? dateForPickerFromStored(lastChargeDate) : new Date()}
+                value={lastChargeDate ? dateForPickerFromUsMdY(lastChargeDate) : new Date()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={(_, date) => {
                   if (Platform.OS === 'android') setShowLastChargePicker(false);
-                  if (date) setLastChargeDate(formatDateEuFromMs(date.getTime()));
+                  if (date) setLastChargeDate(formatDateUsMdYFromMs(date.getTime()));
                 }}
               />
               {Platform.OS === 'ios' && (

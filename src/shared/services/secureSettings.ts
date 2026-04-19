@@ -4,7 +4,6 @@ const KEYS = {
   adminPin: 'aegis_admin_pin',
   theme: 'aegis_theme',
   shtfMode: 'aegis_shtf_mode',
-  expiryDays: 'aegis_expiry_days',
   weightPercent: 'aegis_weight_percent',
   bodyWeightKg: 'aegis_body_weight_kg',
   maxHeartRate: 'aegis_max_heart_rate',
@@ -28,8 +27,6 @@ const KEYS = {
   activeKitId: 'aegis_active_kit_id',
   /** DB row id in `mission_presets` */
   selectedMissionPresetId: 'aegis_selected_mission_preset_id',
-  /** Months after last charge / check when next battery review is due (warehouse items). */
-  maintenanceAlertThresholdMonths: 'aegis_maintenance_alert_threshold_months',
   /** Passphrase for APRS ENC: family channel (AES-256-CBC). */
   familyEncryptionKey: 'aegis_family_encryption_key',
   /** Passphrase for APRS ENC: rescuers channel. */
@@ -40,7 +37,6 @@ const DEFAULTS = {
   adminPin: '1234',
   theme: 'dark',
   shtfMode: 'false',
-  expiryDays: '14',
   weightPercent: '20',
   callsign: 'SY2EYH',
   ssid: '7',
@@ -70,15 +66,6 @@ export async function getShtfMode(): Promise<boolean> {
 
 export async function setShtfMode(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(KEYS.shtfMode, enabled ? 'true' : 'false');
-}
-
-export async function getExpiryDays(): Promise<number> {
-  const v = await SecureStore.getItemAsync(KEYS.expiryDays);
-  return v ? parseInt(v, 10) : parseInt(DEFAULTS.expiryDays, 10);
-}
-
-export async function setExpiryDays(days: number): Promise<void> {
-  await SecureStore.setItemAsync(KEYS.expiryDays, String(days));
 }
 
 export async function getWeightPercent(): Promise<number> {
@@ -279,19 +266,6 @@ export async function setSelectedMissionPresetId(presetRowId: string | null): Pr
     return;
   }
   await SecureStore.setItemAsync(KEYS.selectedMissionPresetId, presetRowId.trim());
-}
-
-const DEFAULT_MAINTENANCE_ALERT_MONTHS = 6;
-
-export async function getMaintenanceAlertThresholdMonths(): Promise<number> {
-  const v = await SecureStore.getItemAsync(KEYS.maintenanceAlertThresholdMonths);
-  const n = v ? parseInt(v, 10) : DEFAULT_MAINTENANCE_ALERT_MONTHS;
-  return isNaN(n) || n < 1 || n > 60 ? DEFAULT_MAINTENANCE_ALERT_MONTHS : n;
-}
-
-export async function setMaintenanceAlertThresholdMonths(months: number): Promise<void> {
-  const clamped = Math.max(1, Math.min(60, Math.round(months)));
-  await SecureStore.setItemAsync(KEYS.maintenanceAlertThresholdMonths, String(clamped));
 }
 
 export async function getFamilyEncryptionKey(): Promise<string | null> {

@@ -284,8 +284,10 @@ export function KitDetailScreen() {
         keyExtractor={(line) => line.pack.id}
         renderItem={({ item: line }) => {
           const { pack, pool } = line;
-          const showExpiryWarn = isExpiredOrExpiringSoon(pool.expiryDate);
-          const expiryStatus = getExpiryStatus(pool.expiryDate);
+          const showExpiryForCategory = pool.poolCategory !== 'tools';
+          const showExpiryWarn =
+            showExpiryForCategory && isExpiredOrExpiringSoon(pool.expiryDate);
+          const expiryStatus = showExpiryForCategory ? getExpiryStatus(pool.expiryDate) : null;
           const itemCal =
             pool.poolCategory === 'consumables' && pool.calories != null
               ? pack.quantity * pool.calories
@@ -354,11 +356,11 @@ export function KitDetailScreen() {
                       </Text>
                     </View>
                   )}
-                  {pool.expiryDate && (
+                  {showExpiryForCategory && pool.expiryDate ? (
                     <Text style={styles.expiryDateText}>
                       Exp: {formatDateEuFromMs(pool.expiryDate)}
                     </Text>
-                  )}
+                  ) : null}
                 </View>
               </TouchableOpacity>
               {isHighlighted && (

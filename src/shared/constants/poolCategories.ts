@@ -51,6 +51,16 @@ export function poolCategoryShowsWaterLitersField(category: string): boolean {
   return category === 'water';
 }
 
+/**
+ * Expiry + Alert Lead on the item form (non-battery categories).
+ * Tools and shelter/clothing are excluded — no dated expiry workflow for those in this app.
+ */
+export function poolCategoryShowsExpiryAndAlertLead(category: string): boolean {
+  if ((BATTERY_POOL_CATEGORY_KEYS as readonly string[]).includes(category)) return false;
+  if (category === 'tools' || category === 'shelter_clothing') return false;
+  return true;
+}
+
 /** Map legacy free-text categories (templates, old DB) to pool keys. */
 export function mapLegacyCategoryToPoolCategory(legacy: string): PoolCategory {
   const c = legacy.trim().toLowerCase();

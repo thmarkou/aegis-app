@@ -1,0 +1,38 @@
+﻿category,name,unit,weight_grams,expiry,alert_lead_days,condition,notes,barcode,is_essential
+medical,Cilroton,pcs,10,01-05-2027,14,New,First Aid,,true
+medical,Imodium,pcs,2,01-10-2029,14,New,First Aid,,true
+medical,Norgesic,pcs,430,01-05-2026,14,New,First Aid,,true
+medical,Path-Muscle,pcs,500,01-02-2028,14,New,First Aid,,true
+medical,Maalox,pcs,200,01-09-2027,14,New,First Aid,,true
+medical,Naprosyn,pcs,500,01-10-2029,14,New,First Aid,,true
+medical,Viaxal,pcs,25,01-04-2025,14,New,First Aid,,true
+medical,Micropur Forte MF IT,pcs,100,01-06-2029,14,New,First Aid,,true
+medical,Betadine,pcs,30,01-03-2028,14,New,First Aid,,true
+medical,Steriblock-Spray Emostatico,pcs,50,01-01-2027,14,New,First Aid,,true
+medical,Tadalafil,pcs,20,01-12-2027,14,New,First Aid,,true
+medical,Hippore - Adhesive Pad,pcs,5,25-12-2023,14,New,First Aid,,true
+medical,INNO Gauze,pcs,5,01-01-2026,14,New,First Aid,,true
+medical,Pharmacy,pcs,660,,14,New,Bushcraft kit,,true
+medical,TOLY for toilets,pcs,30,,14,New,Bushcraft kit,,true
+medical,Vaseline,pcs,103,,14,New,Bushcraft kit,,true
+medical,Venom Extractor,pcs,76,,14,New,Bushcraft kit,,true
+medical,Soap,pcs,123,,,New,Bushcraft kit,,true
+shelter_clothing,Adjustable Neck Gaiter,pcs,35,,,New,Bushcraft kit,,true
+shelter_clothing,Aluminum Alloy Tent Rope 10 Buckles,pcs,27,,,New,Bushcraft kit,,true
+shelter_clothing,Aluminum Alloy Tent Rope 10 Buckles,pcs,27,,,New,Bushcraft kit,,true
+shelter_clothing,Breathable Gloves for Heavy Duty - Army Green,pcs,93,,,New,Bushcraft kit,,true
+shelter_clothing,Cape Style 3-in-1Raincoat - Army Green,pcs,80,,,New,Bushcraft kit,,true
+shelter_clothing,Emergency Blanket,pcs,63,,,New,Bushcraft kit,,true
+shelter_clothing,Emergency Blanket,pcs,63,,,New,Bushcraft kit,,true
+shelter_clothing,Emergency Blanket,pcs,63,,,New,Bushcraft kit,,true
+shelter_clothing,Emergency Sleeping Bag,pcs,125,,,New,Bushcraft kit,,true
+shelter_clothing,Emergency Sleeping Bag - Green,pcs,112,,,New,Bushcraft kit,,true
+shelter_clothing,Emergency Sleeping Bag - Orange,pcs,125,,,New,Bushcraft kit,,true
+shelter_clothing,Heavy Duty Emergency Rain Poncho with Hood,pcs,300,,,New,Bushcraft kit,,true
+shelter_clothing,Light Duty Emergency Rain Poncho,pcs,87,,,New,Bushcraft kit,,true
+shelter_clothing,Outdoor Camping Tent Ground 10 Nails - Yellow,pcs,57,,,New,Bushcraft kit,,true
+shelter_clothing,Outdoor Camping Tent Ground 10 Nails - Yellow,pcs,57,,,New,Bushcraft kit,,true
+shelter_clothing,Picnic Mat Multifunctional Floor Cloth,pcs,280,,,New,Bushcraft kit,,true
+shelter_clothing,Quick Assemble Easy Tent - Green Life Tent,pcs,227,,,New,Bushcraft kit,,true
+shelter_clothing,Quick Assemble Easy Tent - Orange Life Tent,pcs,227,,,New,Bushcraft kit,,true
+shelter_clothing,Space Souls Camo Boonie Hat,pcs,78,,,New,Bushcraft kit,,true
