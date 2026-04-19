@@ -17,7 +17,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.aegis.survival",
-      "disableNotifications": true
+      "disableNotifications": true,
+      "deploymentTarget": "15.1"
     },
     "android": {
       "adaptiveIcon": {

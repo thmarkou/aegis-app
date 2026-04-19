@@ -38,6 +38,16 @@ export function parseUsMdYToMs(input: string): number | null {
   return d.getTime();
 }
 
+/** Battery CSV export: `last_charge_date` as YYYY-MM-DD. */
+export function formatIsoYmdFromMs(ms: number): string {
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 /** Battery CSV `last_charge_date` column: YYYY-MM-DD only (import). */
 export function parseIsoYmdToMs(input: string): number | null {
   const t = input.trim();

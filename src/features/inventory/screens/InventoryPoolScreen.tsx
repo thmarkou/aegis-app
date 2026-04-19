@@ -40,6 +40,11 @@ import {
   readTextFileLenientUtf8,
   type CsvTemplateKind,
 } from '../services/poolCsvImport';
+import {
+  buildPoolExportCsv,
+  filterItemsForExportKind,
+  writePoolCsvAndShare,
+} from '../services/poolCsvExport';
 
 type Section = { title: string; data: InventoryPoolItem[] };
 
@@ -70,6 +75,7 @@ export function InventoryPoolScreen() {
   const [sections, setSections] = useState<Section[]>([]);
   const [filterCat, setFilterCat] = useState<FilterMode>('all');
   const [importModalVisible, setImportModalVisible] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
   const [kitSummary, setKitSummary] = useState<PoolKitSummary>(initialKitSummary);
 
   const applyFilter = useCallback(
@@ -161,6 +167,7 @@ export function InventoryPoolScreen() {
 
   /** Prevents overlapping DocumentPicker sessions (iOS: "Different document picking in progress"). */
   const csvImportInFlightRef = useRef(false);
+  const csvExportInFlightRef = useRef(false);
 
   const runCsvImport = useCallback(
     async (kind: CsvTemplateKind) => {
@@ -199,6 +206,25 @@ export function InventoryPoolScreen() {
     [load]
   );
 
+  const runCsvExport = useCallback(async (kind: CsvTemplateKind) => {
+    if (csvExportInFlightRef.current) return;
+    csvExportInFlightRef.current = true;
+    setExportModalVisible(false);
+    try {
+      const pools = await database.get<InventoryPoolItem>('inventory_pool_items').query().fetch();
+      const filtered = filterItemsForExportKind(kind, pools);
+      const csv = buildPoolExportCsv(kind, filtered);
+      await writePoolCsvAndShare(kind, csv);
+      if (filtered.length === 0) {
+        Alert.alert('Export', 'No items in this template group — file has the header row only.');
+      }
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      csvExportInFlightRef.current = false;
+    }
+  }, []);
+
   const handleDeleteItem = (poolItem: InventoryPoolItem) => {
     Alert.alert('Delete item', 'Are you sure you want to delete this item?', [
       { text: 'Cancel', style: 'cancel' },
@@ -224,18 +250,27 @@ export function InventoryPoolScreen() {
     <View style={tacticalStyles.screen}>
       <Text style={styles.intro}>
         Physical warehouse catalog: one list for all pool items. Use + to add an item manually, or
-        Import CSV (four UTF-8 templates under assets/import-templates/). Alert lead applies where
+        Import / Export CSV (four UTF-8 templates under assets/import-templates/). Alert lead applies where
         expiry or battery maintenance is used — not for Tools. &quot;Needs attention&quot; filters
         expiry or maintenance alerts. Category chips show (in kits / total): pool lines linked to at
         least one kit vs all rows in that category.
       </Text>
-      <TouchableOpacity
-        style={styles.importBtn}
-        onPress={() => setImportModalVisible(true)}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.importBtnText}>Import CSV…</Text>
-      </TouchableOpacity>
+      <View style={styles.importExportRow}>
+        <TouchableOpacity
+          style={styles.importBtn}
+          onPress={() => setImportModalVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.importBtnText}>Import CSV…</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.importBtn}
+          onPress={() => setExportModalVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.importBtnText}>Export CSV…</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.chipsWrap}>
         <TouchableOpacity
           style={[styles.chip, filterCat === 'all' && styles.chipOn]}
@@ -439,6 +474,68 @@ export function InventoryPoolScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={exportModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportModalVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setExportModalVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Export warehouse CSV</Text>
+            <Text style={styles.modalHint}>
+              Pick the same template group as Import. Only rows in those categories are included
+              (re-importable UTF-8). Use the share sheet to save to Files, AirDrop, etc.
+            </Text>
+            <ScrollView
+              style={styles.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <TouchableOpacity
+                style={styles.modalRow}
+                onPress={() => void runCsvExport('tools')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalRowTitle}>1 · Tools</Text>
+                <Text style={styles.modalRowSub}>category: tools only</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalRow}
+                onPress={() => void runCsvExport('general')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalRowTitle}>2 · Medical &amp; shelter</Text>
+                <Text style={styles.modalRowSub}>medical, shelter_clothing</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalRow}
+                onPress={() => void runCsvExport('food_water')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalRowTitle}>3 · Food &amp; water</Text>
+                <Text style={styles.modalRowSub}>consumables, water</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalRow}
+                onPress={() => void runCsvExport('battery')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalRowTitle}>4 · Battery / power</Text>
+                <Text style={styles.modalRowSub}>{BATTERY_POOL_CATEGORY_KEYS.join(', ')}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setExportModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -452,10 +549,15 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     lineHeight: 20,
   },
-  importBtn: {
-    alignSelf: 'flex-start',
+  importExportRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
     marginLeft: 16,
     marginBottom: 10,
+    alignItems: 'center',
+  },
+  importBtn: {
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,

@@ -533,6 +533,12 @@
 ### Inventory Pool — φίλτρα κατηγορίας
 - Chips **`(σε kits / σύνολο)`**: distinct pool items που εμφανίζονται σε τουλάχιστον ένα **`kit_pack_items`** vs σύνολο ανά κατηγορία· **`All`** και **`Needs attention (n)`** με αντίστοιχους μετρητές.
 
+### Export warehouse CSV ([`poolCsvExport.ts`](src/features/inventory/services/poolCsvExport.ts), [`InventoryPoolScreen.tsx`](src/features/inventory/screens/InventoryPoolScreen.tsx))
+- Κουμπί **Export CSV…** δίπλα στο Import· modal με τις **4 ίδιες ομάδες** templates· UTF-8 CSV ίδια headers με import (ξαναεισαγώσιμο)· **`expo-sharing`** για share sheet (Files / AirDrop κ.λπ.)· **`formatIsoYmdFromMs`** για στήλη `last_charge_date` στο export.
+
+### iOS build — deployment target ([`Podfile`](ios/Podfile), [`Podfile.properties.json`](ios/Podfile.properties.json), [`app.json`](app.json))
+- **`IPHONEOS_DEPLOYMENT_TARGET` 15.1** για όλα τα CocoaPods targets στο `post_install` (το `expo-asset` podspec δηλώνει ακόμα 13.4, ενώ το `ExpoModulesCore` είναι 15.1+)· ρητό `ios.deploymentTarget` / `deploymentTarget` ώστε το build να μην σπάει στο Xcode.
+
 ### Git
 - Ενημέρωση `WORKLOG.md` και commit + push στο GitHub (`main`, 2026-04-19).
 
