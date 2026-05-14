@@ -20,6 +20,21 @@ export type PoolCsvImportResult = {
   errors: string[];
 };
 
+/**
+ * Importer expects plain-text CSV. `.numbers` / Excel workbooks are binary — show a clear message.
+ * Returns Greek user message or null when extension is acceptable / unknown.
+ */
+export function validateCsvImportFileName(fileName: string): string | null {
+  const lower = fileName.trim().toLowerCase();
+  if (lower.endsWith('.numbers')) {
+    return 'Το AEGIS διαβάζει μόνο αρχεία .csv. Στο Numbers: Αρχείο → Εξαγωγή σε → CSV… (ή File → Export To → CSV).';
+  }
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+    return 'Το AEGIS διαβάζει μόνο .csv. Στο Excel: Αποθήκευση ως → CSV UTF-8 (με διαχωριστικό κόμμα).';
+  }
+  return null;
+}
+
 /** React Native / Hermes has no global `atob`; decode Base64 to bytes in JS. */
 function base64ToUint8Array(b64: string): Uint8Array {
   const s = b64.replace(/\s/g, '');
@@ -79,9 +94,36 @@ const TOOLS_CATEGORIES: readonly PoolCategory[] = ['tools'];
 const MEDICAL_SHELTER_CATEGORIES: readonly PoolCategory[] = ['medical', 'shelter_clothing'];
 const FOOD_WATER_CATEGORIES: readonly PoolCategory[] = ['consumables', 'water'];
 
-/** Strip BOM, split CSV with quoted fields. */
+/** Excel EU often uses `;` or tab; UK/US uses `,`. */
+function sniffDelimiter(headerLine: string): ',' | ';' | '\t' {
+  let commas = 0;
+  let semis = 0;
+  let tabs = 0;
+  let q = false;
+  for (let i = 0; i < headerLine.length; i++) {
+    const c = headerLine[i];
+    if (c === '"') {
+      q = !q;
+      continue;
+    }
+    if (!q) {
+      if (c === ',') commas++;
+      else if (c === ';') semis++;
+      else if (c === '\t') tabs++;
+    }
+  }
+  if (tabs > commas && tabs > semis) return '\t';
+  if (semis > commas) return ';';
+  return ',';
+}
+
+/** Strip BOM, RFC4180-ish quoted fields; delimiter inferred from the header row. */
 export function parseCsv(text: string): string[][] {
   const t = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const nl = t.indexOf('\n');
+  const headerLine = nl === -1 ? t : t.slice(0, nl);
+  const delim = sniffDelimiter(headerLine);
+
   const rows: string[][] = [];
   let row: string[] = [];
   let cur = '';
@@ -109,7 +151,7 @@ export function parseCsv(text: string): string[][] {
       i++;
       continue;
     }
-    if (c === ',') {
+    if (c === delim) {
       row.push(cur);
       cur = '';
       i++;
@@ -132,7 +174,7 @@ export function parseCsv(text: string): string[][] {
 }
 
 function normalizeHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/\s+/g, '_');
+  return h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/\s+/g, '_');
 }
 
 function rowToMap(headers: string[], cells: string[]): Record<string, string> {
@@ -336,7 +378,9 @@ export async function importPoolCsv(
       const expiryMs =
         !isShelter && rec.expiry?.trim() ? parseFlexibleDateToMs(rec.expiry.trim()) : null;
       if (!isShelter && rec.expiry?.trim() && expiryMs == null) {
-        errors.push(`Line ${lineNo}: invalid expiry (use DD-MM-YYYY)`);
+        errors.push(
+          `Line ${lineNo}: invalid expiry (use DD-MM-YYYY, YYYY-MM-DD, or YYYY/M/D)`
+        );
         continue;
       }
       const alertLead = isShelter
@@ -399,7 +443,9 @@ export async function importPoolCsv(
         ? parseFlexibleDateToMs(rec.expiry.trim())
         : null;
       if (rec.expiry?.trim() && expiryMs == null) {
-        errors.push(`Line ${lineNo}: invalid expiry (use DD-MM-YYYY)`);
+        errors.push(
+          `Line ${lineNo}: invalid expiry (use DD-MM-YYYY, YYYY-MM-DD, or YYYY/M/D)`
+        );
         continue;
       }
       const alertLead = parseRequiredInt(rec.alert_lead_days, DEFAULT_ALERT_LEAD);

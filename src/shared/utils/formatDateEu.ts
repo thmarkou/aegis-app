@@ -69,26 +69,51 @@ export function dateForPickerFromUsMdY(stored: string): Date {
   return new Date();
 }
 
-/** Parse DD-MM-YYYY or legacy YYYY-MM-DD to local noon timestamp. */
+/** Parse DD-MM-YYYY, YYYY-MM-DD, or slash variants (Excel locales) to local noon. */
 export function parseFlexibleDateToMs(input: string): number | null {
   const t = input.trim();
   if (!t) return null;
-  const eu = t.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (eu) {
-    const dd = parseInt(eu[1], 10);
-    const mm = parseInt(eu[2], 10) - 1;
-    const yyyy = parseInt(eu[3], 10);
-    const d = new Date(yyyy, mm, dd, 12, 0, 0, 0);
-    return isNaN(d.getTime()) ? null : d.getTime();
-  }
+
   const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
     const yyyy = parseInt(iso[1], 10);
     const mm = parseInt(iso[2], 10) - 1;
     const dd = parseInt(iso[3], 10);
     const d = new Date(yyyy, mm, dd, 12, 0, 0, 0);
+    if (d.getFullYear() !== yyyy || d.getMonth() !== mm || d.getDate() !== dd) return null;
+    return d.getTime();
+  }
+
+  const isoSlash = t.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (isoSlash) {
+    const yyyy = parseInt(isoSlash[1], 10);
+    const mm = parseInt(isoSlash[2], 10) - 1;
+    const dd = parseInt(isoSlash[3], 10);
+    const d = new Date(yyyy, mm, dd, 12, 0, 0, 0);
+    if (d.getFullYear() !== yyyy || d.getMonth() !== mm || d.getDate() !== dd) return null;
+    return d.getTime();
+  }
+
+  const eu = t.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (eu) {
+    const dd = parseInt(eu[1], 10);
+    const mm = parseInt(eu[2], 10) - 1;
+    const yyyy = parseInt(eu[3], 10);
+    const d = new Date(yyyy, mm, dd, 12, 0, 0, 0);
+    if (d.getMonth() !== mm || d.getDate() !== dd) return null;
     return isNaN(d.getTime()) ? null : d.getTime();
   }
+
+  const euSlash = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (euSlash) {
+    const dd = parseInt(euSlash[1], 10);
+    const mm = parseInt(euSlash[2], 10) - 1;
+    const yyyy = parseInt(euSlash[3], 10);
+    const d = new Date(yyyy, mm, dd, 12, 0, 0, 0);
+    if (d.getMonth() !== mm || d.getDate() !== dd) return null;
+    return isNaN(d.getTime()) ? null : d.getTime();
+  }
+
   return null;
 }
 

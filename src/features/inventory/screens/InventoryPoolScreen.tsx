@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   InteractionManager,
+  Platform,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import {
@@ -38,6 +39,7 @@ import { refreshInventoryNotifications } from '../services/refreshInventoryNotif
 import {
   importPoolCsv,
   readTextFileLenientUtf8,
+  validateCsvImportFileName,
   type CsvTemplateKind,
 } from '../services/poolCsvImport';
 import {
@@ -184,10 +186,19 @@ export function InventoryPoolScreen() {
         });
         const pick = await DocumentPicker.getDocumentAsync({
           copyToCacheDirectory: true,
-          type: '*/*',
+          type:
+            Platform.OS === 'ios'
+              ? ['public.comma-separated-values-text', 'public.plain-text', 'public.text', 'public.data']
+              : ['text/csv', 'text/comma-separated-values', 'text/plain', '*/*'],
         });
         if (pick.canceled || !pick.assets?.length) return;
-        const text = await readTextFileLenientUtf8(pick.assets[0].uri);
+        const asset = pick.assets[0];
+        const blocked = validateCsvImportFileName(asset.name ?? '');
+        if (blocked) {
+          Alert.alert('Λάθος τύπος αρχείου', blocked);
+          return;
+        }
+        const text = await readTextFileLenientUtf8(asset.uri);
         const out = await importPoolCsv(text, kind);
         let message = `Imported ${out.imported} item(s).`;
         if (out.errors.length > 0) {
@@ -250,7 +261,8 @@ export function InventoryPoolScreen() {
     <View style={tacticalStyles.screen}>
       <Text style={styles.intro}>
         Physical warehouse catalog: one list for all pool items. Use + to add an item manually, or
-        Import / Export CSV (four UTF-8 templates under assets/import-templates/). Alert lead applies where
+        Import / Export CSV — μόνο αρχεία .csv (κείμενο UTF-8). Όχι Numbers (.numbers) ούτε Excel
+        (.xlsx)· εξαγωγή σε CSV από Numbers/Excel πρώτα. Templates: assets/import-templates/. Alert lead applies where
         expiry or battery maintenance is used — not for Tools. &quot;Needs attention&quot; filters
         expiry or maintenance alerts. Category chips show (in kits / total): pool lines linked to at
         least one kit vs all rows in that category.
@@ -426,7 +438,7 @@ export function InventoryPoolScreen() {
                 <Text style={styles.modalRowSub}>medical, shelter_clothing</Text>
                 <Text style={styles.modalRowDetail}>
                   Required: name; category (medical | shelter_clothing).{'\n'}
-                  medical: expiry optional (DD-MM-YYYY); alert_lead_days defaults to 14 if blank.{'\n'}
+                  medical: expiry optional (DD-MM-YYYY, YYYY-MM-DD, or slashes). alert_lead_days defaults to 14 if blank.{'\n'}
                   shelter_clothing: leave expiry and alert_lead_days empty (ignored).{'\n'}
                   Optional: condition, notes, barcode, is_essential.
                 </Text>
